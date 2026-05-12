@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 interface QRScreenProps {
   status: string;
   qrPng: string | null;
+  onRetry: () => Promise<void>;
 }
 
-export function QRScreen({ status, qrPng }: QRScreenProps) {
+export function QRScreen({ status, qrPng, onRetry }: QRScreenProps) {
   const [elapsed, setElapsed] = useState(0);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     const startedAt = Date.now();
@@ -24,13 +26,22 @@ export function QRScreen({ status, qrPng }: QRScreenProps) {
       ? "Esperando escaneo..."
       : status === "connecting"
         ? "Conectando..."
-        : "Esperando al bot...";
+        : "Reconectando...";
+
+  async function retry() {
+    setRetrying(true);
+    try {
+      await onRetry();
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-stone-100 p-4">
       <section className="w-full max-w-md rounded-lg border border-stone-200 bg-white p-6 text-center shadow-sm">
         <h1 className="text-xl font-semibold text-stone-900">
-          Conectar número
+          Conectar numero
         </h1>
         <p className="mt-2 text-sm text-stone-600">
           Abre WhatsApp, entra a Dispositivos vinculados y escanea este QR.
@@ -41,7 +52,7 @@ export function QRScreen({ status, qrPng }: QRScreenProps) {
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={qrPng}
-              alt="Código QR para conectar WhatsApp"
+              alt="Codigo QR para conectar WhatsApp"
               className="h-80 w-80"
             />
           ) : (
@@ -62,10 +73,23 @@ export function QRScreen({ status, qrPng }: QRScreenProps) {
           {statusCopy}
         </div>
 
-        {status === "disconnected" && !qrPng && elapsed > 10 ? (
-          <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-            No llegó el QR. Reinicia el proceso bot con npm run start:bot.
-          </p>
+        {!qrPng && elapsed > 20 ? (
+          <div className="mt-4 rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-800">
+            <p>
+              Seguimos intentando reconectar sin cerrar tu sesion de WhatsApp.
+              Si tarda demasiado, puedes forzar un reinicio suave.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                void retry();
+              }}
+              disabled={retrying}
+              className="mt-3 rounded-md bg-amber-700 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:bg-amber-300"
+            >
+              {retrying ? "Reintentando..." : "Reintentar conexion"}
+            </button>
+          </div>
         ) : null}
       </section>
     </main>

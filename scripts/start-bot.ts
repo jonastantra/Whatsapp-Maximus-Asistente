@@ -1,12 +1,13 @@
 import "./env-loader";
 import fs from "node:fs";
 import path from "node:path";
-import { setConnectionState } from "../src/lib/db";
+import { getConnectionState, setConnectionState } from "../src/lib/db";
 import { startBaileys, type BaileysHandle } from "../src/lib/baileys/client";
 
 const dataDir = path.resolve(process.cwd(), "data");
 const authDir = path.resolve(process.cwd(), "auth");
 const restartFlag = path.join(dataDir, ".restart");
+const resetSessionFlag = path.join(dataDir, ".reset-session");
 
 fs.mkdirSync(dataDir, { recursive: true });
 
@@ -24,23 +25,37 @@ async function restartClean(): Promise<void> {
   restarting = true;
 
   try {
+    const shouldResetSession = fs.existsSync(resetSessionFlag);
+
     if (fs.existsSync(restartFlag)) {
       fs.unlinkSync(restartFlag);
     }
 
-    console.log("[bot] Reinicio manual solicitado desde dashboard.");
+    if (shouldResetSession) {
+      fs.unlinkSync(resetSessionFlag);
+    }
+
+    console.log(
+      shouldResetSession
+        ? "[bot] Reset de sesión solicitado desde dashboard."
+        : "[bot] Reinicio suave solicitado desde dashboard.",
+    );
 
     if (handle) {
-      await handle.shutdown();
+      await handle.shutdown({ logout: shouldResetSession });
       handle = null;
     }
 
-    fs.rmSync(authDir, { recursive: true, force: true });
-    setConnectionState({
-      status: "disconnected",
-      qr_string: null,
-      phone: null,
-    });
+    if (shouldResetSession) {
+      fs.rmSync(authDir, { recursive: true, force: true });
+      setConnectionState({
+        status: "disconnected",
+        qr_string: null,
+        phone: null,
+      });
+    } else {
+      setConnectionState({ status: "connecting" });
+    }
 
     await start();
   } catch (err) {
@@ -63,10 +78,22 @@ process.on("SIGTERM", async () => {
 });
 
 setInterval(() => {
-  if (fs.existsSync(restartFlag)) {
+  if (fs.existsSync(restartFlag) || fs.existsSync(resetSessionFlag)) {
     void restartClean();
   }
 }, 1000);
+
+setInterval(() => {
+  if (restarting || handle) return;
+
+  const state = getConnectionState();
+  if (state.status === "disconnected") {
+    console.log("[bot] Watchdog: estado disconnected sin handle, reintentando.");
+    void start().catch((err) => {
+      console.error("[bot] Watchdog falló:", err);
+    });
+  }
+}, 10000);
 
 void start().catch((err) => {
   console.error("[bot] Error fatal:", err);

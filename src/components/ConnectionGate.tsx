@@ -147,18 +147,24 @@ export function ConnectionGate() {
     await refresh();
   }
 
-  async function disconnect() {
-    await fetch("/api/connection/disconnect", { method: "POST" });
+  async function restartConnection() {
+    await fetch("/api/connection/restart", { method: "POST" });
     await refresh();
   }
 
   if (connection.status !== "connected") {
-    return <QRScreen status={connection.status} qrPng={connection.qrPng} />;
+    return (
+      <QRScreen
+        status={connection.status}
+        qrPng={connection.qrPng}
+        onRetry={restartConnection}
+      />
+    );
   }
 
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-stone-100">
-      <DashboardHeader phone={connection.phone} onDisconnect={disconnect} />
+      <DashboardHeader phone={connection.phone} onDisconnect={restartConnection} />
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <ConversationList
           conversations={conversations}
