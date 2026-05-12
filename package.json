@@ -1,0 +1,44 @@
+{
+  "name": "agente-whatsapp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "start:bot": "tsx scripts/start-bot.ts",
+    "start:all": "concurrently --kill-others --names BOT,WEB --prefix-colors yellow,cyan \"npm run start:bot\" \"npm run start\""
+  },
+  "dependencies": {
+    "@tailwindcss/postcss": "^4.3.0",
+    "@whiskeysockets/baileys": "^6.17.16",
+    "better-sqlite3": "^12.10.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.6",
+    "next": "^16.2.6",
+    "openai": "^6.37.0",
+    "pino": "^10.3.1",
+    "postcss": "^8.5.6",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "tailwindcss": "^4.3.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.7.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/qrcode-terminal": "^0.12.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
+  }
+}
