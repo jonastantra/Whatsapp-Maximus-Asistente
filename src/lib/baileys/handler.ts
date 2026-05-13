@@ -7,6 +7,7 @@ import {
 } from "../db";
 import { botLog } from "../bot-log";
 import { generateReply } from "../openrouter";
+import { notifyOwner, shouldAlertOwner } from "../alerts";
 
 function extractText(msg: WAMessage): string | null {
   const message =
@@ -76,6 +77,10 @@ export async function handleIncomingMessage(
 
   const conversation = getOrCreateConversation(phone, msg.pushName);
   insertMessage(conversation.id, "user", text);
+
+  if (shouldAlertOwner(text)) {
+    void notifyOwner(sock, remoteJid, msg.pushName, text);
+  }
 
   const fresh = getConversationById(conversation.id);
   if (!fresh || fresh.mode !== "AI") {

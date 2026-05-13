@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ConnectionStatus,
   ConversationListItem,
@@ -32,6 +32,16 @@ export function ConnectionGate() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const selectedIdRef = useRef<number | null>(null);
+  const messagesRef = useRef<Message[]>([]);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const selectedConversation = useMemo(
     () =>
@@ -75,15 +85,24 @@ export function ConnectionGate() {
   }, []);
 
   const loadMessages = useCallback(async (conversationId: number) => {
-    setLoadingMessages(true);
+    const isInitialLoad =
+      messagesRef.current.length === 0 || selectedIdRef.current !== conversationId;
+    if (isInitialLoad) setLoadingMessages(true);
+
     try {
       const res = await fetch(`/api/messages/${conversationId}`, {
         cache: "no-store",
       });
       const json = (await res.json()) as { messages: Message[] };
-      setMessages(json.messages);
+      const current = messagesRef.current;
+      const currentLast = current.at(-1)?.id ?? null;
+      const nextLast = json.messages.at(-1)?.id ?? null;
+
+      if (current.length !== json.messages.length || currentLast !== nextLast) {
+        setMessages(json.messages);
+      }
     } finally {
-      setLoadingMessages(false);
+      if (isInitialLoad) setLoadingMessages(false);
     }
   }, []);
 

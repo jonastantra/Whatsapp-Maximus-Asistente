@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, UIEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { ConversationListItem, ConversationMode, Message } from "@/lib/db";
 import { MessageBubble } from "./MessageBubble";
 import { ModeToggle } from "./ModeToggle";
@@ -24,12 +24,36 @@ export function ConversationPanel({
 }: ConversationPanelProps) {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickToBottomRef = useRef(true);
+  const lastConversationIdRef = useRef<number | null>(null);
 
   const canSend = conversation?.mode === "HUMAN";
   const title = useMemo(() => {
     if (!conversation) return "Selecciona una conversación";
     return conversation.name || conversation.phone;
   }, [conversation]);
+
+  useEffect(() => {
+    const conversationChanged = lastConversationIdRef.current !== conversation?.id;
+    lastConversationIdRef.current = conversation?.id ?? null;
+
+    if (conversationChanged) {
+      shouldStickToBottomRef.current = true;
+    }
+
+    if (shouldStickToBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ block: "end" });
+    }
+  }, [conversation?.id, messages]);
+
+  function handleScroll(event: UIEvent<HTMLDivElement>) {
+    const element = event.currentTarget;
+    const distanceFromBottom =
+      element.scrollHeight - element.scrollTop - element.clientHeight;
+    shouldStickToBottomRef.current = distanceFromBottom < 120;
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -95,7 +119,11 @@ export function ConversationPanel({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4"
+      >
         {loading ? (
           <p className="text-sm text-stone-500">Cargando mensajes...</p>
         ) : messages.length === 0 ? (
@@ -110,6 +138,7 @@ export function ConversationPanel({
             />
           ))
         )}
+        <div ref={bottomRef} />
       </div>
 
       <form onSubmit={submit} className="border-t border-stone-200 bg-white p-3">
