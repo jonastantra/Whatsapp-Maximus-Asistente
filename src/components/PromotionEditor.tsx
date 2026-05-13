@@ -103,13 +103,9 @@ export function PromotionEditor() {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={
-          enabled
-            ? "rounded-md border border-emerald-300 bg-emerald-100 px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-200"
-            : "rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-100"
-        }
+        className="rounded-md border border-stone-900 bg-stone-900 px-3 py-2 text-sm font-semibold text-white hover:bg-stone-700"
       >
-        Prompt y promo
+        Editar prompt
       </button>
 
       {open ? (
@@ -117,12 +113,21 @@ export function PromotionEditor() {
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-stone-900">
-                Prompt y promocion en vivo
+                Editor en vivo del bot
               </h2>
               <p className="mt-1 text-xs text-stone-500">
-                Lo que guardes aqui se usa sin GitHub ni redeploy.
+                Primero edita el prompt. La promocion esta en su propia pestana.
               </p>
             </div>
+            <span
+              className={
+                enabled
+                  ? "rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800"
+                  : "rounded-full bg-stone-100 px-2 py-1 text-xs font-semibold text-stone-600"
+              }
+            >
+              {enabled ? "Promo activa" : "Sin promo activa"}
+            </span>
             <button
               type="button"
               onClick={() => setOpen(false)}
