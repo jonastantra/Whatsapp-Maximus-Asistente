@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { getActivePromotion, type Message } from "./db";
+import { getActivePromotion, getBotSettings, type Message } from "./db";
 import { SYSTEM_PROMPT } from "./system-prompt";
 
 const apiKey = process.env.OPENROUTER_API_KEY;
@@ -11,6 +11,8 @@ const client = new OpenAI({
 });
 
 function buildSystemPrompt(): string {
+  const settings = getBotSettings();
+  const businessPrompt = settings.custom_prompt?.trim() || SYSTEM_PROMPT;
   const sections = [
     [
       "INSTRUCCION CRITICA DE IDIOMA:",
@@ -19,7 +21,7 @@ function buildSystemPrompt(): string {
       "No incluyas caracteres chinos, símbolos raros ni texto en otro alfabeto.",
       "Si el modelo piensa en otro idioma, traduce internamente y entrega solo español claro.",
     ].join("\n"),
-    SYSTEM_PROMPT,
+    businessPrompt,
   ];
 
   if (process.env.PAYMENT_INFO_TEXT) {

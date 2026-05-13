@@ -4,6 +4,7 @@ import {
   getConversationById,
   getOrCreateConversation,
   getRecentHistory,
+  hasRecentMessageWithContent,
   insertMessage,
 } from "../db";
 import { botLog } from "../bot-log";
@@ -42,8 +43,6 @@ export async function handleIncomingMessage(
   sock: WASocket,
   msg: WAMessage,
 ): Promise<void> {
-  if (msg.key.fromMe) return;
-
   const remoteJid = msg.key.remoteJid;
   if (!remoteJid) {
     botLog("[bot] Mensaje ignorado: remoteJid vacío", {
@@ -77,6 +76,25 @@ export async function handleIncomingMessage(
   botLog(`[bot] ← Mensaje de ${phone}: "${text}"`);
 
   const conversation = getOrCreateConversation(phone, msg.pushName);
+
+  if (msg.key.fromMe) {
+    const alreadySaved = hasRecentMessageWithContent(
+      conversation.id,
+      ["human", "assistant"],
+      text,
+      180,
+    );
+
+    if (alreadySaved) {
+      botLog(`[bot] Mensaje propio ya registrado para ${phone}.`);
+      return;
+    }
+
+    insertMessage(conversation.id, "human", text);
+    botLog(`[bot] Mensaje propio guardado como HUMANO para ${phone}: "${text}"`);
+    return;
+  }
+
   insertMessage(conversation.id, "user", text);
 
   if (shouldAlertOwner(text)) {

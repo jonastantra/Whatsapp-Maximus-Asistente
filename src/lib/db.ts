@@ -58,6 +58,8 @@ export interface ActivePromotion {
 export interface BotSettings {
   id: 1;
   ai_paused: 0 | 1;
+  custom_prompt: string | null;
+  promo_seed_key: string | null;
   updated_at: number;
 }
 
@@ -138,6 +140,64 @@ CREATE TABLE IF NOT EXISTS bot_settings (
 INSERT OR IGNORE INTO bot_settings (id) VALUES (1);
 `);
 
+function ensureColumn(table: string, column: string, ddl: string): void {
+  const columns = db.pragma(`table_info(${table})`) as Array<{ name: string }>;
+  if (!columns.some((item) => item.name === column)) {
+    db.exec(ddl);
+  }
+}
+
+ensureColumn(
+  "bot_settings",
+  "custom_prompt",
+  "ALTER TABLE bot_settings ADD COLUMN custom_prompt TEXT",
+);
+
+ensureColumn(
+  "bot_settings",
+  "promo_seed_key",
+  "ALTER TABLE bot_settings ADD COLUMN promo_seed_key TEXT",
+);
+
+const kirklandRematePromotion = `
+Promocion especial de remate de stock Kirkland liquido 5%.
+Poco stock disponible, ultimas piezas. Caducidad: septiembre 2026.
+Vigencia: solo hasta el 16 de mayo.
+Precios:
+- 1 mes: $199 MXN.
+- 2 meses: $399 MXN.
+- 3 meses: $499 MXN.
+- 6 meses: $950 MXN.
+- 2 cajas: $1,500 MXN.
+Usala cuando pregunten por Kirkland, minoxidil liquido, promociones o remate.
+Responde con urgencia real: es remate y hay poco stock.
+`.trim();
+
+const currentPromoSeedKey = "kirkland-remate-sept-2026-may-16";
+const settingsForSeed = db
+  .prepare("SELECT promo_seed_key FROM bot_settings WHERE id = 1")
+  .get() as { promo_seed_key: string | null };
+
+if (settingsForSeed.promo_seed_key !== currentPromoSeedKey) {
+  db.transaction(() => {
+    db.prepare(
+      `
+      UPDATE active_promotion
+      SET content = ?, enabled = 1, updated_at = unixepoch()
+      WHERE id = 1
+    `,
+    ).run(kirklandRematePromotion);
+
+    db.prepare(
+      `
+      UPDATE bot_settings
+      SET promo_seed_key = ?, updated_at = unixepoch()
+      WHERE id = 1
+    `,
+    ).run(currentPromoSeedKey);
+  })();
+}
+
 const selectConversationByPhone = db.prepare(
   "SELECT * FROM conversations WHERE phone = ?",
 );
@@ -196,6 +256,35 @@ export function insertMessage(
   content: string,
 ): number {
   return insertMessageTx(conversationId, role, content);
+}
+
+export function hasRecentMessageWithContent(
+  conversationId: number,
+  roles: MessageRole[],
+  content: string,
+  seconds = 180,
+): boolean {
+  if (roles.length === 0) return false;
+
+  const rolePlaceholders = roles.map(() => "?").join(", ");
+  const row = db
+    .prepare(
+      `
+      SELECT id
+      FROM messages
+      WHERE conversation_id = ?
+        AND role IN (${rolePlaceholders})
+        AND content = ?
+        AND created_at >= unixepoch() - ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `,
+    )
+    .get(conversationId, ...roles, content, seconds) as
+    | { id: number }
+    | undefined;
+
+  return !!row;
 }
 
 export function getMessages(conversationId: number, limit = 50): Message[] {
@@ -373,6 +462,18 @@ export function setAiPaused(paused: boolean): BotSettings {
     WHERE id = 1
   `,
   ).run(paused ? 1 : 0);
+
+  return getBotSettings();
+}
+
+export function setCustomPrompt(content: string): BotSettings {
+  db.prepare(
+    `
+    UPDATE bot_settings
+    SET custom_prompt = ?, updated_at = unixepoch()
+    WHERE id = 1
+  `,
+  ).run(content.trim());
 
   return getBotSettings();
 }
