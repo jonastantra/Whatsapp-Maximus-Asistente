@@ -19,6 +19,13 @@ interface ConnectionResponse {
   updatedAt: number;
 }
 
+interface SettingsResponse {
+  settings: {
+    ai_paused: 0 | 1;
+    updated_at: number;
+  };
+}
+
 export function ConnectionGate() {
   const [connection, setConnection] = useState<ConnectionResponse>({
     status: "disconnected",
@@ -32,6 +39,7 @@ export function ConnectionGate() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [aiPaused, setAiPaused] = useState(false);
   const selectedIdRef = useRef<number | null>(null);
   const messagesRef = useRef<Message[]>([]);
 
@@ -56,6 +64,12 @@ export function ConnectionGate() {
     });
     const nextConnection = (await statusRes.json()) as ConnectionResponse;
     setConnection(nextConnection);
+
+    const settingsRes = await fetch("/api/settings", {
+      cache: "no-store",
+    });
+    const settingsJson = (await settingsRes.json()) as SettingsResponse;
+    setAiPaused(settingsJson.settings.ai_paused === 1);
 
     if (nextConnection.status !== "connected") {
       setConversations([]);
@@ -171,6 +185,18 @@ export function ConnectionGate() {
     await refresh();
   }
 
+  async function changeAiPaused(paused: boolean) {
+    const res = await fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ aiPaused: paused }),
+    });
+
+    if (!res.ok) return;
+    const json = (await res.json()) as SettingsResponse;
+    setAiPaused(json.settings.ai_paused === 1);
+  }
+
   if (connection.status !== "connected") {
     return (
       <QRScreen
@@ -183,7 +209,12 @@ export function ConnectionGate() {
 
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-stone-100">
-      <DashboardHeader phone={connection.phone} onDisconnect={restartConnection} />
+      <DashboardHeader
+        phone={connection.phone}
+        aiPaused={aiPaused}
+        onAiPausedChange={changeAiPaused}
+        onDisconnect={restartConnection}
+      />
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <ConversationList
           conversations={conversations}
@@ -194,6 +225,7 @@ export function ConnectionGate() {
           conversation={selectedConversation}
           messages={messages}
           loading={loadingMessages}
+          aiPaused={aiPaused}
           onModeChange={changeMode}
           onSendHuman={sendHuman}
           onDelete={deleteSelected}

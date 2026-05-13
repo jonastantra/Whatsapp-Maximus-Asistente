@@ -1,5 +1,6 @@
 import type { WASocket, WAMessage } from "@whiskeysockets/baileys";
 import {
+  getBotSettings,
   getConversationById,
   getOrCreateConversation,
   getRecentHistory,
@@ -80,6 +81,12 @@ export async function handleIncomingMessage(
 
   if (shouldAlertOwner(text)) {
     void notifyOwner(sock, remoteJid, msg.pushName, text);
+  }
+
+  const settings = getBotSettings();
+  if (settings.ai_paused === 1) {
+    botLog(`[bot] IA pausada globalmente. No responde a ${phone}.`);
+    return;
   }
 
   const fresh = getConversationById(conversation.id);

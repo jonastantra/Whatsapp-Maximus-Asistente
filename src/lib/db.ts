@@ -55,6 +55,12 @@ export interface ActivePromotion {
   updated_at: number;
 }
 
+export interface BotSettings {
+  id: 1;
+  ai_paused: 0 | 1;
+  updated_at: number;
+}
+
 type ConnectionStatePatch = {
   status?: ConnectionStatus;
   qr_string?: string | null;
@@ -122,6 +128,14 @@ CREATE TABLE IF NOT EXISTS active_promotion (
 );
 
 INSERT OR IGNORE INTO active_promotion (id) VALUES (1);
+
+CREATE TABLE IF NOT EXISTS bot_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  ai_paused INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+INSERT OR IGNORE INTO bot_settings (id) VALUES (1);
 `);
 
 const selectConversationByPhone = db.prepare(
@@ -343,4 +357,22 @@ export function setActivePromotion(
   ).run(content.trim(), enabled ? 1 : 0);
 
   return getActivePromotion();
+}
+
+export function getBotSettings(): BotSettings {
+  return db
+    .prepare("SELECT * FROM bot_settings WHERE id = 1")
+    .get() as BotSettings;
+}
+
+export function setAiPaused(paused: boolean): BotSettings {
+  db.prepare(
+    `
+    UPDATE bot_settings
+    SET ai_paused = ?, updated_at = unixepoch()
+    WHERE id = 1
+  `,
+  ).run(paused ? 1 : 0);
+
+  return getBotSettings();
 }

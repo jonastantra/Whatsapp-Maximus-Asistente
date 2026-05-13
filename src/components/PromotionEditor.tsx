@@ -17,15 +17,13 @@ export function PromotionEditor() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
-
     void (async () => {
       const res = await fetch("/api/promotions", { cache: "no-store" });
       const json = (await res.json()) as PromotionResponse;
       setContent(json.promotion.content);
       setEnabled(json.promotion.enabled === 1);
     })();
-  }, [open]);
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -33,11 +31,14 @@ export function PromotionEditor() {
     setSaved(false);
 
     try {
-      await fetch("/api/promotions", {
+      const res = await fetch("/api/promotions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content, enabled }),
       });
+      const json = (await res.json()) as PromotionResponse;
+      setContent(json.promotion.content);
+      setEnabled(json.promotion.enabled === 1);
       setSaved(true);
     } finally {
       setSaving(false);
@@ -49,9 +50,13 @@ export function PromotionEditor() {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
+        className={
+          enabled
+            ? "rounded-md border border-emerald-300 bg-emerald-100 px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-200"
+            : "rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+        }
       >
-        Promocion
+        {enabled ? "Promo activa" : "Promocion"}
       </button>
 
       {open ? (

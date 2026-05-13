@@ -9,6 +9,7 @@ interface ConversationPanelProps {
   conversation: ConversationListItem | null;
   messages: Message[];
   loading: boolean;
+  aiPaused: boolean;
   onModeChange: (mode: ConversationMode) => Promise<void>;
   onSendHuman: (content: string) => Promise<void>;
   onDelete: () => Promise<void>;
@@ -18,6 +19,7 @@ export function ConversationPanel({
   conversation,
   messages,
   loading,
+  aiPaused,
   onModeChange,
   onSendHuman,
   onDelete,
@@ -29,7 +31,7 @@ export function ConversationPanel({
   const shouldStickToBottomRef = useRef(true);
   const lastConversationIdRef = useRef<number | null>(null);
 
-  const canSend = conversation?.mode === "HUMAN";
+  const canSend = conversation?.mode === "HUMAN" || aiPaused;
   const title = useMemo(() => {
     if (!conversation) return "Selecciona una conversación";
     return conversation.name || conversation.phone;
@@ -98,6 +100,11 @@ export function ConversationPanel({
             {title}
           </h2>
           <p className="text-sm text-stone-500">{conversation.phone}</p>
+          {aiPaused ? (
+            <p className="mt-1 text-xs font-medium text-amber-700">
+              IA pausada globalmente. Puedes responder manualmente.
+            </p>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <ModeToggle

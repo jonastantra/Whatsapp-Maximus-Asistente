@@ -1,13 +1,21 @@
 "use client";
 
+import { GlobalPauseToggle } from "./GlobalPauseToggle";
 import { PromotionEditor } from "./PromotionEditor";
 
 interface DashboardHeaderProps {
   phone: string | null;
+  aiPaused: boolean;
+  onAiPausedChange: (paused: boolean) => Promise<void>;
   onDisconnect: () => Promise<void>;
 }
 
-export function DashboardHeader({ phone, onDisconnect }: DashboardHeaderProps) {
+export function DashboardHeader({
+  phone,
+  aiPaused,
+  onAiPausedChange,
+  onDisconnect,
+}: DashboardHeaderProps) {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-stone-200 bg-white px-4">
       <div>
@@ -19,6 +27,10 @@ export function DashboardHeader({ phone, onDisconnect }: DashboardHeaderProps) {
         </p>
       </div>
       <div className="flex items-center gap-2">
+        <GlobalPauseToggle
+          aiPaused={aiPaused}
+          onChange={onAiPausedChange}
+        />
         <PromotionEditor />
         <button
           type="button"
