@@ -9,7 +9,7 @@ import {
 } from "../db";
 import { botLog } from "../bot-log";
 import { generateReply } from "../openrouter";
-import { notifyOwner, shouldAlertOwner } from "../alerts";
+import { getOwnerAlertReason, notifyOwner } from "../alerts";
 
 function extractText(msg: WAMessage): string | null {
   const message =
@@ -97,8 +97,9 @@ export async function handleIncomingMessage(
 
   insertMessage(conversation.id, "user", text);
 
-  if (shouldAlertOwner(text)) {
-    void notifyOwner(sock, remoteJid, msg.pushName, text);
+  const alertReason = getOwnerAlertReason(text);
+  if (alertReason) {
+    void notifyOwner(sock, remoteJid, msg.pushName, text, alertReason);
   }
 
   const settings = getBotSettings();
