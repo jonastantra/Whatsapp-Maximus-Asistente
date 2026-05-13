@@ -50,6 +50,30 @@ Cuando escanees el QR, la sesión se guarda en `./auth/`. En reinicios posterior
 
 Los mensajes manuales se guardan como `human`, se encolan en SQLite y el proceso bot los envía por WhatsApp cada 2 segundos.
 
+## Promociones en vivo
+
+En el dashboard usa el botón `Promocion` para editar una promoción activa sin subir cambios a GitHub ni redeployar.
+
+La promoción se guarda en SQLite y el bot la lee en cada respuesta. Puedes activarla, desactivarla o cambiar el texto cuando quieras.
+
+Ejemplo:
+
+```text
+Promo de hoy: remate de Minoxidil Kirkland 3 meses en $___, hasta agotar existencias. Si pregunta por Kirkland, ofrecer esta promo primero.
+```
+
+## Pagos y alertas
+
+Configura en EasyPanel:
+
+```env
+OWNER_ALERT_PHONE=5215585747455
+PAYMENT_INFO_TEXT=Bancomer: TITULAR..., CLABE..., tarjeta/cuenta... Banamex: TITULAR..., CLABE..., tarjeta/cuenta...
+PAYMENT_EXTRA_INSTRUCTIONS=Bancomer es la cuenta principal. Pedir comprobante despues de pagar.
+```
+
+Cuando el cliente pida cuenta, depósito, transferencia, CLABE, tarjeta, comprobante o atención humana, el bot manda aviso al WhatsApp configurado.
+
 ## Personalizar el prompt
 
 Edita `src/lib/system-prompt.ts`. Ese texto se manda como system prompt a OpenRouter para cada respuesta automática.

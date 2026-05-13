@@ -48,6 +48,13 @@ export interface OutboxItem {
   created_at: number;
 }
 
+export interface ActivePromotion {
+  id: 1;
+  content: string;
+  enabled: 0 | 1;
+  updated_at: number;
+}
+
 type ConnectionStatePatch = {
   status?: ConnectionStatus;
   qr_string?: string | null;
@@ -106,6 +113,15 @@ CREATE TABLE IF NOT EXISTS outbox (
 
 CREATE INDEX IF NOT EXISTS idx_outbox_pending
   ON outbox(sent, created_at);
+
+CREATE TABLE IF NOT EXISTS active_promotion (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  content TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+INSERT OR IGNORE INTO active_promotion (id) VALUES (1);
 `);
 
 const selectConversationByPhone = db.prepare(
@@ -306,4 +322,25 @@ export function markOutboxSent(id: number): void {
 
 export function deleteConversation(id: number): void {
   deleteConversationTx(id);
+}
+
+export function getActivePromotion(): ActivePromotion {
+  return db
+    .prepare("SELECT * FROM active_promotion WHERE id = 1")
+    .get() as ActivePromotion;
+}
+
+export function setActivePromotion(
+  content: string,
+  enabled: boolean,
+): ActivePromotion {
+  db.prepare(
+    `
+    UPDATE active_promotion
+    SET content = ?, enabled = ?, updated_at = unixepoch()
+    WHERE id = 1
+  `,
+  ).run(content.trim(), enabled ? 1 : 0);
+
+  return getActivePromotion();
 }

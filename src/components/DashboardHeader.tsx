@@ -1,5 +1,7 @@
 "use client";
 
+import { PromotionEditor } from "./PromotionEditor";
+
 interface DashboardHeaderProps {
   phone: string | null;
   onDisconnect: () => Promise<void>;
@@ -16,15 +18,18 @@ export function DashboardHeader({ phone, onDisconnect }: DashboardHeaderProps) {
           {phone ? `Conectado: ${phone}` : "Conectado"}
         </p>
       </div>
-      <button
-        type="button"
-        onClick={() => {
-          void onDisconnect();
-        }}
-        className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-100"
-      >
-        Reiniciar conexión
-      </button>
+      <div className="flex items-center gap-2">
+        <PromotionEditor />
+        <button
+          type="button"
+          onClick={() => {
+            void onDisconnect();
+          }}
+          className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+        >
+          Reiniciar conexion
+        </button>
+      </div>
     </header>
   );
 }

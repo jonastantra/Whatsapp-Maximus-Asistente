@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { Message } from "./db";
+import { getActivePromotion, type Message } from "./db";
 import { SYSTEM_PROMPT } from "./system-prompt";
 
 const apiKey = process.env.OPENROUTER_API_KEY;
@@ -37,6 +37,21 @@ function buildSystemPrompt(): string {
 
   if (process.env.PAYMENT_EXTRA_INSTRUCTIONS) {
     sections.push(process.env.PAYMENT_EXTRA_INSTRUCTIONS);
+  }
+
+  const promotion = getActivePromotion();
+  if (promotion.enabled && promotion.content.trim()) {
+    sections.push(
+      [
+        "PROMOCION ACTIVA EN VIVO:",
+        promotion.content.trim(),
+        "Reglas de promocion:",
+        "- Esta promocion tiene prioridad sobre precios o paquetes anteriores si aplica al producto preguntado.",
+        "- Usala de forma natural para cerrar ventas.",
+        "- Si el cliente pregunta por promociones, menciona esta primero.",
+        "- Si la promocion no aplica al producto que pregunta, no la fuerces.",
+      ].join("\n"),
+    );
   }
 
   return sections.join("\n\n");
