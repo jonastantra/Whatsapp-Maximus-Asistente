@@ -6,10 +6,11 @@ import {
   getRecentHistory,
   hasRecentMessageWithContent,
   insertMessage,
+  setMode,
 } from "../db";
 import { botLog } from "../bot-log";
 import { generateReply } from "../openrouter";
-import { getOwnerAlertReason, notifyOwner } from "../alerts";
+import { getHumanHandoff, getOwnerAlertReason, notifyOwner } from "../alerts";
 
 function extractText(msg: WAMessage): string | null {
   const message =
@@ -96,6 +97,16 @@ export async function handleIncomingMessage(
   }
 
   insertMessage(conversation.id, "user", text);
+
+  const handoff = getHumanHandoff(text);
+  if (handoff) {
+    insertMessage(conversation.id, "assistant", handoff.reply);
+    await sock.sendMessage(remoteJid, { text: handoff.reply });
+    setMode(conversation.id, "HUMAN");
+    void notifyOwner(sock, remoteJid, msg.pushName, text, handoff.reason);
+    botLog(`[bot] Chat ${phone} derivado a HUMANO (${handoff.reason}).`);
+    return;
+  }
 
   const alertReason = getOwnerAlertReason(text);
   if (alertReason) {

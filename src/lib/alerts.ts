@@ -3,7 +3,19 @@ import { botLog } from "./bot-log";
 
 const ownerPhone = process.env.OWNER_ALERT_PHONE;
 
-type OwnerAlertReason = "pago" | "visita" | "atencion" | "pedido";
+export type OwnerAlertReason =
+  | "pago"
+  | "visita"
+  | "atencion"
+  | "pedido"
+  | "salud"
+  | "postventa"
+  | "mayoreo";
+
+export interface HumanHandoff {
+  reason: OwnerAlertReason;
+  reply: string;
+}
 
 function toJid(phoneOrJid: string): string {
   if (phoneOrJid.includes("@")) return phoneOrJid;
@@ -140,6 +152,123 @@ export function getOwnerAlertReason(text: string): OwnerAlertReason | null {
   return null;
 }
 
+export function getHumanHandoff(text: string): HumanHandoff | null {
+  const normalized = text ? normalizeText(text) : "";
+
+  const healthKeywords = [
+    "irritacion fuerte",
+    "me irrito",
+    "me arde",
+    "alergia",
+    "reaccion",
+    "mareo",
+    "mareos",
+    "dolor",
+    "palpitaciones",
+    "efecto secundario",
+    "efectos secundarios",
+    "me salio roncha",
+    "ronchas",
+    "se me hincho",
+  ];
+
+  if (includesAny(normalized, healthKeywords)) {
+    return {
+      reason: "salud",
+      reply:
+        "Por seguridad, eso prefiero pasarlo con un asesor humano para orientarte mejor. Si hay molestia fuerte, suspende el uso y consulta a un profesional de salud.",
+    };
+  }
+
+  const postSaleKeywords = [
+    "devolucion",
+    "devolver",
+    "cambio",
+    "garantia",
+    "reembolso",
+    "no llego",
+    "no me llego",
+    "paquete perdido",
+    "reclamo",
+    "queja",
+    "molesto",
+    "enojado",
+    "factura",
+    "facturacion",
+  ];
+
+  if (includesAny(normalized, postSaleKeywords)) {
+    return {
+      reason: "postventa",
+      reply:
+        "Claro, para revisarlo bien te paso con un asesor humano. En un momento te apoyan con el seguimiento.",
+    };
+  }
+
+  const wholesaleKeywords = [
+    "mayoreo",
+    "distribuidor",
+    "revender",
+    "revendedor",
+    "precio de mayoreo",
+    "cuantas piezas",
+    "muchas piezas",
+  ];
+
+  if (includesAny(normalized, wholesaleKeywords)) {
+    return {
+      reason: "mayoreo",
+      reply:
+        "Claro, para mayoreo conviene que te atienda un asesor humano y te confirme precio por volumen. En un momento te apoyan.",
+    };
+  }
+
+  const paymentHandoffKeywords = [
+    "ya pague",
+    "ya deposite",
+    "ya transferi",
+    "mande comprobante",
+    "mando comprobante",
+    "envio comprobante",
+    "te mando comprobante",
+    "te envio comprobante",
+    "voy a pagar",
+    "voy a depositar",
+    "voy a transferir",
+    "hare deposito",
+    "hago deposito",
+    "hare transferencia",
+    "hago transferencia",
+  ];
+
+  if (includesAny(normalized, paymentHandoffKeywords)) {
+    return {
+      reason: "pago",
+      reply:
+        "Perfecto. Para confirmar tu pago y darle seguimiento, te paso con un asesor humano. Si ya tienes comprobante, mandalo por aqui.",
+    };
+  }
+
+  const pickupReason = getOwnerAlertReason(text);
+  if (pickupReason === "visita") {
+    return {
+      reason: "visita",
+      reply:
+        "Va, para coordinar bien la entrega y no hacerte dar vuelta, te paso con un asesor humano. En un momento te confirman.",
+    };
+  }
+
+  if (pickupReason === "atencion") {
+    return {
+      reason: "atencion",
+      reply:
+        "Claro, te paso con un asesor humano para que te apoye mejor. En un momento te atienden.",
+    };
+  }
+
+  return null;
+}
+
 export function shouldAlertOwner(text: string): boolean {
   return getOwnerAlertReason(text) !== null;
 }
@@ -160,9 +289,15 @@ export async function notifyOwner(
         ? "cliente posiblemente va a pasar o recoger en sucursal/punto de entrega"
         : reason === "pedido"
           ? "posible pedido o compra"
-          : reason === "atencion"
-            ? "solicita atencion humana"
-            : "posible pago, pedido o atencion humana";
+          : reason === "salud"
+            ? "tema de salud, irritacion o posible efecto secundario"
+            : reason === "postventa"
+              ? "postventa, factura, garantia, cambio, reclamo o seguimiento"
+              : reason === "mayoreo"
+                ? "consulta de mayoreo o volumen"
+                : reason === "atencion"
+                  ? "solicita atencion humana"
+                  : "posible pago, pedido o atencion humana";
 
   const message = [
     "Atencion requerida en WhatsApp Maximus.",
