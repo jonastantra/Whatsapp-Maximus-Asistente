@@ -14,6 +14,15 @@ interface PromptResponse {
   isDefault: boolean;
 }
 
+interface CatalogResponse {
+  items: Array<{
+    name: string;
+    price: string;
+    notes: string | null;
+    active: 0 | 1;
+  }>;
+}
+
 const defaultPromoText = `Promocion especial de remate de stock Kirkland liquido 5%.
 Poco stock disponible, ultimas piezas. Caducidad: septiembre 2026.
 Vigencia: solo hasta el 16 de mayo.
@@ -28,28 +37,44 @@ Responde con urgencia real: es remate y hay poco stock.`;
 
 export function PromotionEditor() {
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"prompt" | "promo">("prompt");
+  const [tab, setTab] = useState<"prompt" | "precios" | "promo">("prompt");
   const [prompt, setPrompt] = useState("");
   const [isDefaultPrompt, setIsDefaultPrompt] = useState(true);
+  const [catalogText, setCatalogText] = useState("");
   const [content, setContent] = useState("");
   const [enabled, setEnabled] = useState(false);
   const [savingPrompt, setSavingPrompt] = useState(false);
+  const [savingCatalog, setSavingCatalog] = useState(false);
   const [savingPromo, setSavingPromo] = useState(false);
   const [saved, setSaved] = useState("");
 
   const load = useCallback(async () => {
-    const [promotionRes, promptRes] = await Promise.all([
+    const [promotionRes, promptRes, catalogRes] = await Promise.all([
       fetch("/api/promotions", { cache: "no-store" }),
       fetch("/api/prompt", { cache: "no-store" }),
+      fetch("/api/catalog", { cache: "no-store" }),
     ]);
 
     const promotionJson = (await promotionRes.json()) as PromotionResponse;
     const promptJson = (await promptRes.json()) as PromptResponse;
+    const catalogJson = (await catalogRes.json()) as CatalogResponse;
 
     setContent(promotionJson.promotion.content);
     setEnabled(promotionJson.promotion.enabled === 1);
     setPrompt(promptJson.prompt);
     setIsDefaultPrompt(promptJson.isDefault);
+    setCatalogText(
+      catalogJson.items
+        .map((item) =>
+          [
+            item.name,
+            item.price,
+            item.notes ?? "",
+            item.active === 1 ? "activo" : "inactivo",
+          ].join(" | "),
+        )
+        .join("\n"),
+    );
   }, []);
 
   useEffect(() => {
@@ -98,6 +123,38 @@ export function PromotionEditor() {
     }
   }
 
+  async function submitCatalog(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingCatalog(true);
+    setSaved("");
+
+    try {
+      const res = await fetch("/api/catalog", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: catalogText }),
+      });
+
+      if (!res.ok) return;
+      const json = (await res.json()) as CatalogResponse;
+      setCatalogText(
+        json.items
+          .map((item) =>
+            [
+              item.name,
+              item.price,
+              item.notes ?? "",
+              item.active === 1 ? "activo" : "inactivo",
+            ].join(" | "),
+          )
+          .join("\n"),
+      );
+      setSaved("Precios guardados. Ya aplican en vivo.");
+    } finally {
+      setSavingCatalog(false);
+    }
+  }
+
   return (
     <div className="relative">
       <button
@@ -116,7 +173,7 @@ export function PromotionEditor() {
                 Editor en vivo del bot
               </h2>
               <p className="mt-1 text-xs text-stone-500">
-                Primero edita el prompt. La promocion esta en su propia pestana.
+                Prompt, precios y promocion se guardan en vivo.
               </p>
             </div>
             <span
@@ -148,6 +205,17 @@ export function PromotionEditor() {
               }
             >
               Prompt
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("precios")}
+              className={
+                tab === "precios"
+                  ? "rounded-md bg-stone-900 px-3 py-2 text-sm font-semibold text-white"
+                  : "rounded-md border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+              }
+            >
+              Precios
             </button>
             <button
               type="button"
@@ -183,6 +251,29 @@ export function PromotionEditor() {
                   className="rounded-md bg-stone-900 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-700 disabled:bg-stone-300"
                 >
                   {savingPrompt ? "Guardando..." : "Guardar prompt"}
+                </button>
+              </div>
+            </form>
+          ) : tab === "precios" ? (
+            <form onSubmit={submitCatalog} className="space-y-3">
+              <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                Formato: Producto | Precio | Notas | activo/inactivo. El bot solo
+                manda al LLM los precios relacionados con la pregunta.
+              </div>
+              <textarea
+                value={catalogText}
+                onChange={(event) => setCatalogText(event.target.value)}
+                rows={18}
+                className="w-full resize-y rounded-md border border-stone-300 px-3 py-2 font-mono text-xs outline-none focus:border-stone-600"
+              />
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-stone-500">{saved}</span>
+                <button
+                  type="submit"
+                  disabled={savingCatalog || !catalogText.trim()}
+                  className="rounded-md bg-stone-900 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-700 disabled:bg-stone-300"
+                >
+                  {savingCatalog ? "Guardando..." : "Guardar precios"}
                 </button>
               </div>
             </form>

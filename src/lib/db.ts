@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { CATALOG_SEED_KEY, DEFAULT_CATALOG } from "./catalog-seed";
 
 export type ConversationMode = "AI" | "HUMAN";
 export type MessageRole = "user" | "assistant" | "human";
@@ -60,6 +61,18 @@ export interface BotSettings {
   ai_paused: 0 | 1;
   custom_prompt: string | null;
   promo_seed_key: string | null;
+  catalog_seed_key: string | null;
+  updated_at: number;
+}
+
+export interface CatalogItem {
+  id: number;
+  name: string;
+  aliases: string | null;
+  price: string;
+  notes: string | null;
+  active: 0 | 1;
+  sort_order: number;
   updated_at: number;
 }
 
@@ -138,6 +151,20 @@ CREATE TABLE IF NOT EXISTS bot_settings (
 );
 
 INSERT OR IGNORE INTO bot_settings (id) VALUES (1);
+
+CREATE TABLE IF NOT EXISTS catalog_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE NOT NULL,
+  aliases TEXT,
+  price TEXT NOT NULL,
+  notes TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_items_active
+  ON catalog_items(active, sort_order);
 `);
 
 function ensureColumn(table: string, column: string, ddl: string): void {
@@ -157,6 +184,12 @@ ensureColumn(
   "bot_settings",
   "promo_seed_key",
   "ALTER TABLE bot_settings ADD COLUMN promo_seed_key TEXT",
+);
+
+ensureColumn(
+  "bot_settings",
+  "catalog_seed_key",
+  "ALTER TABLE bot_settings ADD COLUMN catalog_seed_key TEXT",
 );
 
 const kirklandRematePromotion = `
@@ -195,6 +228,51 @@ if (settingsForSeed.promo_seed_key !== currentPromoSeedKey) {
       WHERE id = 1
     `,
     ).run(currentPromoSeedKey);
+  })();
+}
+
+const catalogSeedState = db
+  .prepare("SELECT catalog_seed_key FROM bot_settings WHERE id = 1")
+  .get() as { catalog_seed_key: string | null };
+
+const catalogCount = db
+  .prepare("SELECT COUNT(*) AS count FROM catalog_items")
+  .get() as { count: number };
+
+if (catalogSeedState.catalog_seed_key !== CATALOG_SEED_KEY && catalogCount.count === 0) {
+  db.transaction(() => {
+    const insertCatalogItem = db.prepare(`
+      INSERT INTO catalog_items
+        (name, aliases, price, notes, active, sort_order)
+      VALUES
+        (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(name) DO UPDATE SET
+        aliases = excluded.aliases,
+        price = excluded.price,
+        notes = excluded.notes,
+        active = excluded.active,
+        sort_order = excluded.sort_order,
+        updated_at = unixepoch()
+    `);
+
+    DEFAULT_CATALOG.forEach((item, index) => {
+      insertCatalogItem.run(
+        item.name,
+        item.aliases ?? null,
+        item.price,
+        item.notes ?? null,
+        item.active === false ? 0 : 1,
+        index,
+      );
+    });
+
+    db.prepare(
+      `
+      UPDATE bot_settings
+      SET catalog_seed_key = ?, updated_at = unixepoch()
+      WHERE id = 1
+    `,
+    ).run(CATALOG_SEED_KEY);
   })();
 }
 
@@ -476,4 +554,109 @@ export function setCustomPrompt(content: string): BotSettings {
   ).run(content.trim());
 
   return getBotSettings();
+}
+
+function normalizeSearchText(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+}
+
+function tokenScore(query: string, item: CatalogItem): number {
+  const haystack = normalizeSearchText(
+    [item.name, item.aliases ?? "", item.notes ?? ""].join(" "),
+  );
+  const tokens = normalizeSearchText(query)
+    .split(/[^a-z0-9%]+/i)
+    .filter((token) => token.length >= 3);
+
+  let score = 0;
+  for (const token of tokens) {
+    if (haystack.includes(token)) score += 2;
+  }
+
+  if (item.active === 1) score += 1;
+  return score;
+}
+
+function wantsPrice(text: string): boolean {
+  const normalized = normalizeSearchText(text);
+  return [
+    "precio",
+    "precios",
+    "cuanto",
+    "cuesta",
+    "costo",
+    "vale",
+    "promocion",
+    "paquete",
+    "kit",
+    "$",
+  ].some((word) => normalized.includes(word));
+}
+
+export function listCatalogItems(): CatalogItem[] {
+  return db
+    .prepare(
+      `
+      SELECT *
+      FROM catalog_items
+      ORDER BY sort_order ASC, name ASC
+    `,
+    )
+    .all() as CatalogItem[];
+}
+
+export function replaceCatalogItems(
+  items: Array<{
+    name: string;
+    price: string;
+    aliases?: string | null;
+    notes?: string | null;
+    active?: boolean;
+  }>,
+): CatalogItem[] {
+  db.transaction(() => {
+    db.prepare("DELETE FROM catalog_items").run();
+    const insert = db.prepare(`
+      INSERT INTO catalog_items
+        (name, aliases, price, notes, active, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    items.forEach((item, index) => {
+      insert.run(
+        item.name.trim(),
+        item.aliases?.trim() || null,
+        item.price.trim(),
+        item.notes?.trim() || null,
+        item.active === false ? 0 : 1,
+        index,
+      );
+    });
+  })();
+
+  return listCatalogItems();
+}
+
+export function searchRelevantCatalog(
+  text: string,
+  limit = 8,
+): CatalogItem[] {
+  const items = listCatalogItems();
+  const scored = items
+    .map((item) => ({ item, score: tokenScore(text, item) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score || a.item.sort_order - b.item.sort_order);
+
+  if (scored.length > 0) {
+    return scored.slice(0, limit).map(({ item }) => item);
+  }
+
+  if (wantsPrice(text)) {
+    return items.filter((item) => item.active === 1).slice(0, Math.min(limit, 5));
+  }
+
+  return [];
 }

@@ -11,6 +11,7 @@ import {
 import { botLog } from "../bot-log";
 import { generateReply } from "../openrouter";
 import { getHumanHandoff, getOwnerAlertReason, notifyOwner } from "../alerts";
+import { tryHandleOwnerCommand } from "../owner-commands";
 
 function extractText(msg: WAMessage): string | null {
   const message =
@@ -76,6 +77,10 @@ export async function handleIncomingMessage(
   const phone = extractPhone(remoteJid);
   botLog(`[bot] ← Mensaje de ${phone}: "${text}"`);
 
+  if (await tryHandleOwnerCommand(sock, msg, text)) {
+    return;
+  }
+
   const conversation = getOrCreateConversation(phone, msg.pushName);
 
   if (msg.key.fromMe) {
@@ -103,14 +108,28 @@ export async function handleIncomingMessage(
     insertMessage(conversation.id, "assistant", handoff.reply);
     await sock.sendMessage(remoteJid, { text: handoff.reply });
     setMode(conversation.id, "HUMAN");
-    void notifyOwner(sock, remoteJid, msg.pushName, text, handoff.reason);
+    void notifyOwner(
+      sock,
+      remoteJid,
+      msg.pushName,
+      text,
+      handoff.reason,
+      conversation.id,
+    );
     botLog(`[bot] Chat ${phone} derivado a HUMANO (${handoff.reason}).`);
     return;
   }
 
   const alertReason = getOwnerAlertReason(text);
   if (alertReason) {
-    void notifyOwner(sock, remoteJid, msg.pushName, text, alertReason);
+    void notifyOwner(
+      sock,
+      remoteJid,
+      msg.pushName,
+      text,
+      alertReason,
+      conversation.id,
+    );
   }
 
   const settings = getBotSettings();

@@ -279,6 +279,7 @@ export async function notifyOwner(
   customerName: string | null | undefined,
   text: string,
   reason: OwnerAlertReason | null = null,
+  conversationId?: number,
 ): Promise<void> {
   if (!ownerPhone) return;
 
@@ -301,12 +302,13 @@ export async function notifyOwner(
 
   const message = [
     "Atencion requerida en WhatsApp Maximus.",
+    conversationId ? `ID conversacion: ${conversationId}` : "",
     `Cliente: ${customerName || "Sin nombre"}`,
     `Chat: ${customerJid}`,
     `Mensaje: ${text}`,
     "",
     `Motivo: ${reasonText}.`,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 
   try {
     await sock.sendMessage(toJid(ownerPhone), { text: message });

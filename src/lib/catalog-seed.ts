@@ -1,0 +1,311 @@
+export interface CatalogSeedItem {
+  name: string;
+  price: string;
+  aliases?: string;
+  notes?: string;
+  active?: boolean;
+}
+
+export const CATALOG_SEED_KEY = "products-export-2026-05-13-v1";
+
+export const DEFAULT_CATALOG: CatalogSeedItem[] = [
+  {
+    name: "Bálsamo Maximus 20% para barba y bigote",
+    price: "$489 MXN",
+    aliases: "balsamo, bálsamo, maximo, maximus, barba, bigote, huecos, 20%",
+    notes:
+      "Producto principal a posicionar. En Shopify aparece precio invertido; usar $489 como precio de venta al cliente.",
+  },
+  {
+    name: "Bálsamo Maximus 12% extra fuerte",
+    price: "$450 MXN",
+    aliases: "balsamo 12, bálsamo 12, maximo 12, maximus 12, extra fuerte",
+  },
+  {
+    name: "Bálsamo para barba al 5%",
+    price: "$320 MXN",
+    aliases: "balsamo 5, bálsamo 5, barba 5%",
+    notes: "Confirmar disponibilidad antes de ofrecer fuerte.",
+    active: false,
+  },
+  {
+    name: "Kit minoxidil Maximus 7% 60 ml",
+    price: "$380 MXN",
+    aliases: "kit 7, minoxidil 7, maximus 7",
+  },
+  {
+    name: "Tónico Ultra Fuerte Minoxidil 20% 60 ml",
+    price: "$470 MXN",
+    aliases: "tonico, tónico, ultra fuerte, minoxidil 20, cabello, barba",
+  },
+  {
+    name: "Kirkland foam 5% 1 mes",
+    price: "$400 MXN",
+    aliases: "kirkland, foam, espuma, 1 mes",
+  },
+  {
+    name: "Kirkland foam 5% 3 meses",
+    price: "$1,400 MXN",
+    aliases: "kirkland, foam, espuma, 3 meses",
+  },
+  {
+    name: "Kirkland foam 5% 6 meses",
+    price: "$2,200 MXN",
+    aliases: "kirkland, foam, espuma, 6 meses",
+    notes: "Confirmar stock antes de ofrecer fuerte.",
+  },
+  {
+    name: "3 Minoxidil Kirkland + Shampoo Maximus 500 ml",
+    price: "$1,100 MXN",
+    aliases: "kirkland, shampoo, combo, paquete",
+  },
+  {
+    name: "Shampoo con minoxidil 5% 500 ml",
+    price: "$240 MXN",
+    aliases: "shampoo, minoxidil, caida, caída, crecimiento capilar",
+  },
+  {
+    name: "Shampoo con minoxidil 5% 1 litro",
+    price: "$280 MXN",
+    aliases: "shampoo, minoxidil, 1 litro, litro",
+    notes: "Confirmar disponibilidad antes de ofrecer fuerte.",
+    active: false,
+  },
+  {
+    name: "3 Shampoo minoxidil 500 ml",
+    price: "$739 MXN",
+    aliases: "shampoo, minoxidil, paquete, 3 shampoo",
+  },
+  {
+    name: "Shampoo energético anticaída 1 litro",
+    price: "$280 MXN",
+    aliases: "shampoo, energetico, energético, anticaida, anticaída, 1 litro",
+  },
+  {
+    name: "Shampoo energizante 500 ml",
+    price: "$230 MXN",
+    aliases: "shampoo, energizante, alopecia, 500 ml",
+  },
+  {
+    name: "Shampoo nutritivo coco 500 ml",
+    price: "$200 MXN",
+    aliases: "shampoo, coco, nutritivo, 500 ml",
+  },
+  {
+    name: "Shampoo cola de caballo 1 litro",
+    price: "$320 MXN",
+    aliases: "shampoo, cola caballo, cola de caballo, anticaida, anticaída, 1 litro",
+  },
+  {
+    name: "Shampoo cola de caballo 500 ml",
+    price: "$140 MXN",
+    aliases: "shampoo, cola caballo, cola de caballo, 500 ml",
+    notes: "Confirmar disponibilidad antes de ofrecer fuerte.",
+    active: false,
+  },
+  {
+    name: "Shampoo cola de caballo 500 ml anticaída y crecimiento natural",
+    price: "$250 MXN",
+    aliases: "shampoo, cola caballo, anticaida, crecimiento natural, 500 ml",
+    notes: "Confirmar disponibilidad antes de ofrecer fuerte.",
+    active: false,
+  },
+  {
+    name: "Shampoo para barba y bigote 125 ml",
+    price: "$149 MXN",
+    aliases: "shampoo barba, shampoo bigote, 125 ml",
+    notes: "Confirmar disponibilidad antes de ofrecer fuerte.",
+    active: false,
+  },
+  {
+    name: "Shampoo crecimiento acelerado 5 en 1",
+    price: "$230 MXN",
+    aliases: "shampoo, crecimiento acelerado, 5 en 1",
+    notes: "Confirmar disponibilidad antes de ofrecer fuerte.",
+  },
+  {
+    name: "Serum crecimiento pestañas, cejas, cabello, barba y bigote",
+    price: "$229 MXN",
+    aliases: "serum, pestañas, pestanas, cejas, cabello, barba, bigote",
+  },
+  {
+    name: "Jabón cubrir huecos menta",
+    price: "$150 MXN",
+    aliases: "jabon, jabón, menta, cubrir huecos",
+  },
+  {
+    name: "Kit de 4 jabones crecimiento para barba",
+    price: "$360 MXN",
+    aliases: "jabones, kit jabones, 4 jabones, barba",
+    notes: "Confirmar disponibilidad antes de ofrecer fuerte.",
+    active: false,
+  },
+  {
+    name: "Kit de 5 jabones crecimiento para barba",
+    price: "$400 MXN",
+    aliases: "jabones, kit jabones, 5 jabones, barba",
+    notes: "Confirmar disponibilidad antes de ofrecer fuerte.",
+    active: false,
+  },
+  {
+    name: "Cera para barba y bigote 1 oz",
+    price: "$110 MXN",
+    aliases: "cera, barba, bigote",
+  },
+  {
+    name: "Cera con bergamota",
+    price: "$160 MXN",
+    aliases: "cera, bergamota",
+    notes: "Confirmar disponibilidad antes de ofrecer fuerte.",
+    active: false,
+  },
+  {
+    name: "Gel negro para cubrir huecos en barba 4 oz",
+    price: "$400 MXN",
+    aliases: "gel negro, cubrir huecos, barba",
+  },
+  {
+    name: "Peine de madera para barba o cabello",
+    price: "$200 MXN",
+    aliases: "peine, madera, barba, cabello",
+  },
+  {
+    name: "Crema para afeitar mentol 240 ml Suavecito",
+    price: "$290 MXN",
+    aliases: "crema afeitar, afeitar, mentol, suavecito",
+    notes: "Confirmar disponibilidad antes de ofrecer fuerte.",
+    active: false,
+  },
+  {
+    name: "Tijeras doradas 8 pz",
+    price: "$450 MXN",
+    aliases: "tijeras, doradas, herramientas",
+    notes: "Confirmar disponibilidad porque puede no haber stock.",
+  },
+  {
+    name: "1 Bálsamo de minoxidil al 20% cerrar huecos",
+    price: "$699 MXN",
+    aliases: "balsamo 20, bálsamo 20, cerrar huecos",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "2 Bálsamos de minoxidil al 20%",
+    price: "$1,200 MXN",
+    aliases: "2 balsamos, 2 bálsamos, paquete balsamo",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "3 Bálsamos de minoxidil al 20%",
+    price: "$1,950 MXN",
+    aliases: "3 balsamos, 3 bálsamos, paquete balsamo",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "6 Bálsamos de minoxidil al 20%",
+    price: "$1,850 MXN",
+    aliases: "6 balsamos, 6 bálsamos, paquete balsamo",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "12 Bálsamos de minoxidil al 20%",
+    price: "$2,600 MXN",
+    aliases: "12 balsamos, 12 bálsamos, paquete balsamo",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "2 Bálsamos de minoxidil al 12%",
+    price: "$850 MXN",
+    aliases: "2 balsamos 12, 2 bálsamos 12",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "6 Bálsamos de minoxidil al 12%",
+    price: "$1,699 MXN",
+    aliases: "6 balsamos 12, 6 bálsamos 12",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "2 Bálsamos 20% + 1 Aceite Citrix Bergamota",
+    price: "$1,200 MXN",
+    aliases: "2 balsamos, aceite, bergamota, paquete",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "2 Bálsamos 20% + 1 Jabón Avena",
+    price: "$1,600 MXN",
+    aliases: "2 balsamos, jabon avena, jabón avena, paquete",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "2 Bálsamos 20% + 1 Jabón cubrir huecos Menta",
+    price: "$1,250 MXN",
+    aliases: "2 balsamos, jabon menta, jabón menta, paquete",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "3 Bálsamos 20% + 1 Bálsamo de Bergamota",
+    price: "$1,699 MXN",
+    aliases: "3 balsamos, bergamota, paquete",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "3 Bálsamos 20% + 1 Jabón Avena + 1 Jabón Menta",
+    price: "$1,799 MXN",
+    aliases: "3 balsamos, jabon avena, jabon menta, paquete",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "3 Bálsamos 20% + 1 Shampoo de Coco 500 ml",
+    price: "$1,799 MXN",
+    aliases: "3 balsamos, shampoo coco, paquete",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "3 Bálsamos 20% + 2 Jabones cubrir huecos Menta",
+    price: "$1,799 MXN",
+    aliases: "3 balsamos, 2 jabones, menta, paquete",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "3 Bálsamos 20% 4 oz",
+    price: "$1,299 MXN",
+    aliases: "3 balsamos, paquete balsamo, 4 oz",
+    notes: "Presentacion de referencia del CSV; confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "2 Shampoos Crecimiento Acelerado 5 en 1",
+    price: "$480 MXN",
+    aliases: "2 shampoos, crecimiento acelerado, 5 en 1",
+    notes: "Confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "3 Shampoos Crecimiento Acelerado 5 en 1",
+    price: "$479 MXN",
+    aliases: "3 shampoos, crecimiento acelerado, 5 en 1",
+    notes: "Confirmar disponibilidad.",
+    active: false,
+  },
+  {
+    name: "6 Shampoos Crecimiento Acelerado 5 en 1",
+    price: "$1,400 MXN",
+    aliases: "6 shampoos, crecimiento acelerado, 5 en 1",
+    notes: "Confirmar disponibilidad.",
+    active: false,
+  },
+];

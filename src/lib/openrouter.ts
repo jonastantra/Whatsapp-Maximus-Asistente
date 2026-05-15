@@ -1,5 +1,11 @@
 import OpenAI from "openai";
-import { getActivePromotion, getBotSettings, type Message } from "./db";
+import {
+  getActivePromotion,
+  getBotSettings,
+  searchRelevantCatalog,
+  type CatalogItem,
+  type Message,
+} from "./db";
 import { SYSTEM_PROMPT } from "./system-prompt";
 
 const apiKey = process.env.OPENROUTER_API_KEY;
@@ -10,9 +16,28 @@ const client = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
 });
 
-function buildSystemPrompt(): string {
+function latestUserText(history: Message[]): string {
+  return [...history].reverse().find((message) => message.role === "user")
+    ?.content ?? "";
+}
+
+function formatCatalogItems(items: CatalogItem[]): string {
+  return items
+    .map((item) => {
+      const details = [
+        `- ${item.name}: ${item.price}`,
+        item.active === 0 ? "confirmar disponibilidad" : "",
+        item.notes ? item.notes : "",
+      ].filter(Boolean);
+      return details.join(" | ");
+    })
+    .join("\n");
+}
+
+function buildSystemPrompt(history: Message[]): string {
   const settings = getBotSettings();
   const businessPrompt = settings.custom_prompt?.trim() || SYSTEM_PROMPT;
+  const userText = latestUserText(history);
   const sections = [
     [
       "INSTRUCCION CRITICA DE IDIOMA:",
@@ -23,6 +48,20 @@ function buildSystemPrompt(): string {
     ].join("\n"),
     businessPrompt,
   ];
+
+  const relevantCatalog = searchRelevantCatalog(userText, 8);
+  if (relevantCatalog.length > 0) {
+    sections.push(
+      [
+        "PRECIOS RELEVANTES DEL CATALOGO:",
+        formatCatalogItems(relevantCatalog),
+        "Reglas de precios:",
+        "- Usa estos precios cuando el cliente pregunte por costo, precio, paquete o disponibilidad.",
+        "- No menciones productos que no sean relevantes para la pregunta.",
+        "- Si un producto dice confirmar disponibilidad, dilo con naturalidad antes de cerrar venta.",
+      ].join("\n"),
+    );
+  }
 
   if (process.env.PAYMENT_INFO_TEXT) {
     sections.push(
@@ -65,7 +104,7 @@ export async function generateReply(history: Message[]): Promise<string> {
   }
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: "system", content: buildSystemPrompt() },
+    { role: "system", content: buildSystemPrompt(history) },
     ...history.map((message) => ({
       role:
         message.role === "user"
