@@ -18,7 +18,13 @@ export function CampaignManager() {
   const [open, setOpen] = useState(false);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [name, setName] = useState("Carrito abandonado");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(
+    [
+      "Hola {nombre}, vimos que dejaste pendiente tu carrito {pedido}.",
+      "Te apartamos {producto} por un total de {total}.",
+      "Si quieres retomarlo, te puedo ayudar por aqui.",
+    ].join("\n"),
+  );
   const [durationHours, setDurationHours] = useState(72);
   const [minDelaySeconds, setMinDelaySeconds] = useState(300);
   const [maxDelaySeconds, setMaxDelaySeconds] = useState(900);
@@ -142,15 +148,19 @@ export function CampaignManager() {
 
                   <label className="block">
                     <span className="mb-1 block text-xs font-semibold text-stone-600">
-                      Mensaje
+                      Mensaje personalizado
                     </span>
                     <textarea
                       value={message}
                       onChange={(event) => setMessage(event.target.value)}
                       rows={5}
-                      placeholder="Hola, vimos que dejaste productos en tu carrito. Te dejamos esta promo..."
+                      placeholder="Hola {nombre}, vimos que dejaste pendiente {producto}..."
                       className="w-full resize-none rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
                     />
+                    <p className="mt-1 text-xs text-stone-500">
+                      Variables: {"{nombre}"}, {"{pedido}"}, {"{producto}"},{" "}
+                      {"{productos}"}, {"{total}"}, {"{ciudad}"}.
+                    </p>
                   </label>
 
                   <label className="block">

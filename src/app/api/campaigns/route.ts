@@ -11,6 +11,17 @@ export const runtime = "nodejs";
 
 type CsvRow = Record<string, string>;
 
+interface LeadDraft {
+  phone: string;
+  name: string | null;
+  checkoutName: string;
+  total: string;
+  currency: string;
+  city: string;
+  createdAt: string;
+  products: string[];
+}
+
 const uploadDir = path.resolve(process.cwd(), "data", "campaign-assets");
 
 function parseCsvLine(line: string): string[] {
@@ -106,6 +117,110 @@ function normalizePhone(raw: string): string | null {
   return null;
 }
 
+function firstName(name: string | null): string {
+  return name?.trim().split(/\s+/)[0] || "hola";
+}
+
+function money(total: string, currency: string): string {
+  const parsed = Number(total);
+  if (!Number.isFinite(parsed) || parsed <= 0) return "";
+  return `$${parsed.toLocaleString("es-MX")} ${currency || "MXN"}`.trim();
+}
+
+function shortProductName(product: string): string {
+  return (
+    product
+      .split("|")[0]
+      ?.trim()
+      .replace(/\s+/g, " ")
+      .slice(0, 90) || "tu producto"
+  );
+}
+
+function defaultCampaignMessage(): string {
+  return [
+    "Hola {nombre}, vimos que dejaste pendiente tu carrito {pedido}.",
+    "Te apartamos {producto} por un total de {total}.",
+    "Si quieres retomarlo, te puedo ayudar por aqui.",
+  ].join("\n");
+}
+
+function renderRecipientMessage(template: string, lead: LeadDraft): string {
+  const products = lead.products.map(shortProductName);
+  const productText =
+    products.length > 1
+      ? `${products[0]} y ${products.length - 1} producto(s) mas`
+      : products[0] || "tu producto";
+  const variables: Record<string, string> = {
+    nombre: firstName(lead.name),
+    nombre_completo: lead.name ?? "",
+    pedido: lead.checkoutName,
+    producto: productText,
+    productos: products.join(", "),
+    total: money(lead.total, lead.currency),
+    ciudad: lead.city,
+    fecha: lead.createdAt,
+  };
+
+  return template.replace(/\{([a-z_]+)\}/gi, (match, key) => {
+    return variables[key.toLowerCase()] || match;
+  });
+}
+
+function buildLeads(rows: CsvRow[]): LeadDraft[] {
+  const byPhone = new Map<string, LeadDraft>();
+
+  for (const row of rows) {
+    const phone = normalizePhone(
+      pick(row, [
+        "phone",
+        "telefono",
+        "teléfono",
+        "mobile",
+        "shipping phone",
+        "billing phone",
+        "customer phone",
+        "numero",
+        "número",
+      ]),
+    );
+    if (!phone) continue;
+
+    const name =
+      pick(row, [
+        "shipping name",
+        "billing name",
+        "name",
+        "nombre",
+        "customer",
+        "customer name",
+        "first name",
+      ]) || null;
+    const product = pick(row, ["lineitem name", "product", "producto"]);
+    const existing = byPhone.get(phone);
+
+    if (existing) {
+      if (product && !existing.products.includes(product)) {
+        existing.products.push(product);
+      }
+      continue;
+    }
+
+    byPhone.set(phone, {
+      phone,
+      name,
+      checkoutName: pick(row, ["name", "checkout name", "order name", "id"]),
+      total: pick(row, ["total", "subtotal"]),
+      currency: pick(row, ["currency"]) || "MXN",
+      city: pick(row, ["shipping city", "billing city", "city", "ciudad"]),
+      createdAt: pick(row, ["created at", "created_at", "fecha"]),
+      products: product ? [product] : [],
+    });
+  }
+
+  return [...byPhone.values()];
+}
+
 function randomBetween(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -133,13 +248,22 @@ function nextWindowTimestamp(
 }
 
 function scheduleRecipients(
-  recipients: Array<{ phone: string; name: string | null }>,
+  recipients: Array<{
+    phone: string;
+    name: string | null;
+    personalizedMessage: string;
+  }>,
   durationHours: number,
   startHour: number,
   endHour: number,
   minDelaySeconds: number,
   maxDelaySeconds: number,
-): Array<{ phone: string; name: string | null; nextSendAt: number }> {
+): Array<{
+  phone: string;
+  name: string | null;
+  personalizedMessage: string;
+  nextSendAt: number;
+}> {
   const now = Math.floor(Date.now() / 1000);
   const windowSeconds = Math.max(1, endHour - startHour) * 60 * 60;
   const campaignSeconds = Math.max(1, durationHours) * 60 * 60;
@@ -174,7 +298,8 @@ export async function POST(req: NextRequest) {
   const csvFile = form.get("csv");
   const imageFile = form.get("image");
   const name = String(form.get("name") ?? "").trim();
-  const message = String(form.get("message") ?? "").trim();
+  const message =
+    String(form.get("message") ?? "").trim() || defaultCampaignMessage();
   const durationHours = Math.min(
     720,
     Math.max(1, Number(form.get("durationHours") ?? 72)),
@@ -196,10 +321,6 @@ export async function POST(req: NextRequest) {
 
   if (!(imageFile instanceof File) || !imageFile.type.startsWith("image/")) {
     return NextResponse.json({ error: "Sube una imagen valida" }, { status: 400 });
-  }
-
-  if (!message) {
-    return NextResponse.json({ error: "Escribe el mensaje de la campana" }, { status: 400 });
   }
 
   const rows = await parseLeadFile(csvFile);
@@ -235,7 +356,11 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const recipients = [...unique.values()];
+  const recipients = buildLeads(rows).map((lead) => ({
+    phone: lead.phone,
+    name: lead.name,
+    personalizedMessage: renderRecipientMessage(message, lead),
+  }));
   if (recipients.length === 0) {
     return NextResponse.json(
       { error: "No encontre telefonos validos en el CSV" },

@@ -99,6 +99,7 @@ export interface CampaignRecipient {
   campaign_id: number;
   phone: string;
   name: string | null;
+  personalized_message: string | null;
   status: CampaignRecipientStatus;
   next_send_at: number;
   sent_at: number | null;
@@ -258,6 +259,12 @@ ensureColumn(
   "bot_settings",
   "catalog_seed_key",
   "ALTER TABLE bot_settings ADD COLUMN catalog_seed_key TEXT",
+);
+
+ensureColumn(
+  "campaign_recipients",
+  "personalized_message",
+  "ALTER TABLE campaign_recipients ADD COLUMN personalized_message TEXT",
 );
 
 const kirklandRematePromotion = `
@@ -738,7 +745,12 @@ export function createMarketingCampaign(input: {
   windowEndHour: number;
   minDelaySeconds: number;
   maxDelaySeconds: number;
-  recipients: Array<{ phone: string; name?: string | null; nextSendAt: number }>;
+  recipients: Array<{
+    phone: string;
+    name?: string | null;
+    personalizedMessage?: string | null;
+    nextSendAt: number;
+  }>;
 }): MarketingCampaign {
   const campaign = db.transaction(() => {
     const result = db
@@ -765,8 +777,8 @@ export function createMarketingCampaign(input: {
     const insertRecipient = db.prepare(
       `
       INSERT OR IGNORE INTO campaign_recipients
-        (campaign_id, phone, name, next_send_at)
-      VALUES (?, ?, ?, ?)
+        (campaign_id, phone, name, personalized_message, next_send_at)
+      VALUES (?, ?, ?, ?, ?)
     `,
     );
 
@@ -775,6 +787,7 @@ export function createMarketingCampaign(input: {
         campaignId,
         recipient.phone,
         recipient.name?.trim() || null,
+        recipient.personalizedMessage?.trim() || null,
         recipient.nextSendAt,
       );
     }
@@ -820,7 +833,7 @@ export function getDueCampaignRecipients(limit = 1): Array<
       SELECT
         r.*,
         c.name AS campaign_name,
-        c.message,
+        COALESCE(r.personalized_message, c.message) AS message,
         c.image_path,
         c.image_mime
       FROM campaign_recipients r
