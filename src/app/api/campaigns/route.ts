@@ -19,6 +19,7 @@ interface LeadDraft {
   currency: string;
   city: string;
   createdAt: string;
+  checkoutUrl: string;
   products: string[];
 }
 
@@ -137,6 +138,14 @@ function shortProductName(product: string): string {
   );
 }
 
+function normalizeUrl(raw: string): string {
+  const value = raw.trim();
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) return value;
+  if (/^[\w.-]+\.[a-z]{2,}/i.test(value)) return `https://${value}`;
+  return "";
+}
+
 function defaultCampaignMessage(): string {
   return [
     "Hola {nombre}, vimos que dejaste pendiente tu carrito {pedido}.",
@@ -160,6 +169,8 @@ function renderRecipientMessage(template: string, lead: LeadDraft): string {
     total: money(lead.total, lead.currency),
     ciudad: lead.city,
     fecha: lead.createdAt,
+    link: lead.checkoutUrl,
+    checkout_url: lead.checkoutUrl,
   };
 
   return template.replace(/\{([a-z_]+)\}/gi, (match, key) => {
@@ -214,6 +225,20 @@ function buildLeads(rows: CsvRow[]): LeadDraft[] {
       currency: pick(row, ["currency"]) || "MXN",
       city: pick(row, ["shipping city", "billing city", "city", "ciudad"]),
       createdAt: pick(row, ["created at", "created_at", "fecha"]),
+      checkoutUrl: normalizeUrl(
+        pick(row, [
+          "abandoned checkout url",
+          "checkout url",
+          "checkout_url",
+          "recovery url",
+          "recovery_url",
+          "cart url",
+          "cart_url",
+          "url",
+          "link",
+          "enlace",
+        ]),
+      ),
       products: product ? [product] : [],
     });
   }

@@ -159,7 +159,7 @@ export function CampaignManager() {
                     />
                     <p className="mt-1 text-xs text-stone-500">
                       Variables: {"{nombre}"}, {"{pedido}"}, {"{producto}"},{" "}
-                      {"{productos}"}, {"{total}"}, {"{ciudad}"}.
+                      {"{productos}"}, {"{total}"}, {"{ciudad}"}, {"{link}"}.
                     </p>
                   </label>
 
