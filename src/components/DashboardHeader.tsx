@@ -1,5 +1,6 @@
 "use client";
 
+import { CampaignManager } from "./CampaignManager";
 import { GlobalPauseToggle } from "./GlobalPauseToggle";
 import { PromotionEditor } from "./PromotionEditor";
 
@@ -31,6 +32,7 @@ export function DashboardHeader({
           aiPaused={aiPaused}
           onChange={onAiPausedChange}
         />
+        <CampaignManager />
         <PromotionEditor />
         <button
           type="button"

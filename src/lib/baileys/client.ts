@@ -11,8 +11,12 @@ import {
 import pino from "pino";
 import qrcodeTerminal from "qrcode-terminal";
 import {
+  finalizeCompletedCampaigns,
   getConnectionState,
+  getDueCampaignRecipients,
   getPendingOutbox,
+  markCampaignRecipientFailed,
+  markCampaignRecipientSent,
   markOutboxSent,
   setConnectionState,
 } from "../db";
@@ -30,6 +34,7 @@ const logger = pino({ level: "silent" });
 let handle: BaileysHandle | null = null;
 let reconnectTimer: NodeJS.Timeout | null = null;
 let outboxTimer: NodeJS.Timeout | null = null;
+let campaignTimer: NodeJS.Timeout | null = null;
 let loggedOutReconnectAttempts = 0;
 const seenMessageIds = new Set<string>();
 const maxLoggedOutReconnectAttempts = 3;
@@ -69,6 +74,33 @@ async function processOutbox(sock: WASocket): Promise<void> {
   }
 }
 
+async function processCampaigns(sock: WASocket): Promise<void> {
+  const due = getDueCampaignRecipients(1);
+
+  for (const item of due) {
+    try {
+      if (!fs.existsSync(item.image_path)) {
+        throw new Error(`Imagen no encontrada: ${item.image_path}`);
+      }
+
+      await sock.sendMessage(jidFromPhone(item.phone), {
+        image: fs.readFileSync(item.image_path),
+        mimetype: item.image_mime,
+        caption: item.message,
+      });
+      markCampaignRecipientSent(item.id);
+      botLog(`[campana] Imagen enviada a ${item.phone} (${item.campaign_name})`);
+    } catch (err) {
+      markCampaignRecipientFailed(item.id, String(err));
+      botLog(`[campana] No se pudo enviar a ${item.phone}`, {
+        error: String(err),
+      });
+    }
+  }
+
+  finalizeCompletedCampaigns();
+}
+
 async function fetchVersion(): Promise<[number, number, number] | undefined> {
   try {
     const fetched = await fetchLatestBaileysVersion();
@@ -94,6 +126,13 @@ function clearOutboxTimer(): void {
   }
 }
 
+function clearCampaignTimer(): void {
+  if (campaignTimer) {
+    clearInterval(campaignTimer);
+    campaignTimer = null;
+  }
+}
+
 function clearAuthSession(): void {
   fs.rmSync(authDir, { recursive: true, force: true });
 }
@@ -108,6 +147,7 @@ async function cleanupSocket(): Promise<void> {
   }
 
   clearOutboxTimer();
+  clearCampaignTimer();
   handle = null;
   await sleep(100);
 }
@@ -145,6 +185,7 @@ function scheduleReconnect(code?: number, options: ReconnectOptions = {}): void 
 export async function startBaileys(): Promise<BaileysHandle> {
   clearReconnectTimer();
   clearOutboxTimer();
+  clearCampaignTimer();
   await cleanupSocket();
 
   fs.mkdirSync(authDir, { recursive: true });
@@ -166,6 +207,7 @@ export async function startBaileys(): Promise<BaileysHandle> {
     shutdown: async (options = {}) => {
       clearReconnectTimer();
       clearOutboxTimer();
+      clearCampaignTimer();
 
       if (options.logout) {
         try {
@@ -243,13 +285,18 @@ export async function startBaileys(): Promise<BaileysHandle> {
       botLog(`[bot] Conectado${phone ? ` como ${phone}` : ""}`);
 
       clearOutboxTimer();
+      clearCampaignTimer();
       outboxTimer = setInterval(() => {
         void processOutbox(sock);
       }, 2000);
+      campaignTimer = setInterval(() => {
+        void processCampaigns(sock);
+      }, 30000);
     }
 
     if (connection === "close") {
       clearOutboxTimer();
+      clearCampaignTimer();
       const code = Number(
         (lastDisconnect?.error as { output?: { statusCode?: number } })?.output
           ?.statusCode,

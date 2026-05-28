@@ -76,6 +76,43 @@ export interface CatalogItem {
   updated_at: number;
 }
 
+export type CampaignStatus = "draft" | "active" | "paused" | "done";
+export type CampaignRecipientStatus = "pending" | "sent" | "failed" | "skipped";
+
+export interface MarketingCampaign {
+  id: number;
+  name: string;
+  message: string;
+  image_path: string;
+  image_mime: string;
+  status: CampaignStatus;
+  window_start_hour: number;
+  window_end_hour: number;
+  min_delay_seconds: number;
+  max_delay_seconds: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface CampaignRecipient {
+  id: number;
+  campaign_id: number;
+  phone: string;
+  name: string | null;
+  status: CampaignRecipientStatus;
+  next_send_at: number;
+  sent_at: number | null;
+  last_error: string | null;
+  created_at: number;
+}
+
+export interface CampaignListItem extends MarketingCampaign {
+  total_recipients: number;
+  pending_recipients: number;
+  sent_recipients: number;
+  failed_recipients: number;
+}
+
 type ConnectionStatePatch = {
   status?: ConnectionStatus;
   qr_string?: string | null;
@@ -165,6 +202,37 @@ CREATE TABLE IF NOT EXISTS catalog_items (
 
 CREATE INDEX IF NOT EXISTS idx_catalog_items_active
   ON catalog_items(active, sort_order);
+
+CREATE TABLE IF NOT EXISTS marketing_campaigns (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  message TEXT NOT NULL,
+  image_path TEXT NOT NULL,
+  image_mime TEXT NOT NULL,
+  status TEXT CHECK(status IN ('draft','active','paused','done')) NOT NULL DEFAULT 'active',
+  window_start_hour INTEGER NOT NULL DEFAULT 10,
+  window_end_hour INTEGER NOT NULL DEFAULT 18,
+  min_delay_seconds INTEGER NOT NULL DEFAULT 300,
+  max_delay_seconds INTEGER NOT NULL DEFAULT 900,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE TABLE IF NOT EXISTS campaign_recipients (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  campaign_id INTEGER NOT NULL REFERENCES marketing_campaigns(id) ON DELETE CASCADE,
+  phone TEXT NOT NULL,
+  name TEXT,
+  status TEXT CHECK(status IN ('pending','sent','failed','skipped')) NOT NULL DEFAULT 'pending',
+  next_send_at INTEGER NOT NULL,
+  sent_at INTEGER,
+  last_error TEXT,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  UNIQUE(campaign_id, phone)
+);
+
+CREATE INDEX IF NOT EXISTS idx_campaign_recipients_due
+  ON campaign_recipients(status, next_send_at);
 `);
 
 function ensureColumn(table: string, column: string, ddl: string): void {
@@ -659,4 +727,153 @@ export function searchRelevantCatalog(
   }
 
   return [];
+}
+
+export function createMarketingCampaign(input: {
+  name: string;
+  message: string;
+  imagePath: string;
+  imageMime: string;
+  windowStartHour: number;
+  windowEndHour: number;
+  minDelaySeconds: number;
+  maxDelaySeconds: number;
+  recipients: Array<{ phone: string; name?: string | null; nextSendAt: number }>;
+}): MarketingCampaign {
+  const campaign = db.transaction(() => {
+    const result = db
+      .prepare(
+        `
+        INSERT INTO marketing_campaigns
+          (name, message, image_path, image_mime, status, window_start_hour,
+           window_end_hour, min_delay_seconds, max_delay_seconds)
+        VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
+      `,
+      )
+      .run(
+        input.name.trim(),
+        input.message.trim(),
+        input.imagePath,
+        input.imageMime,
+        input.windowStartHour,
+        input.windowEndHour,
+        input.minDelaySeconds,
+        input.maxDelaySeconds,
+      );
+
+    const campaignId = Number(result.lastInsertRowid);
+    const insertRecipient = db.prepare(
+      `
+      INSERT OR IGNORE INTO campaign_recipients
+        (campaign_id, phone, name, next_send_at)
+      VALUES (?, ?, ?, ?)
+    `,
+    );
+
+    for (const recipient of input.recipients) {
+      insertRecipient.run(
+        campaignId,
+        recipient.phone,
+        recipient.name?.trim() || null,
+        recipient.nextSendAt,
+      );
+    }
+
+    return db
+      .prepare("SELECT * FROM marketing_campaigns WHERE id = ?")
+      .get(campaignId) as MarketingCampaign;
+  })();
+
+  return campaign;
+}
+
+export function listMarketingCampaigns(): CampaignListItem[] {
+  return db
+    .prepare(
+      `
+      SELECT
+        c.*,
+        COUNT(r.id) AS total_recipients,
+        SUM(CASE WHEN r.status = 'pending' THEN 1 ELSE 0 END) AS pending_recipients,
+        SUM(CASE WHEN r.status = 'sent' THEN 1 ELSE 0 END) AS sent_recipients,
+        SUM(CASE WHEN r.status = 'failed' THEN 1 ELSE 0 END) AS failed_recipients
+      FROM marketing_campaigns c
+      LEFT JOIN campaign_recipients r ON r.campaign_id = c.id
+      GROUP BY c.id
+      ORDER BY c.created_at DESC, c.id DESC
+    `,
+    )
+    .all() as CampaignListItem[];
+}
+
+export function getDueCampaignRecipients(limit = 1): Array<
+  CampaignRecipient & {
+    campaign_name: string;
+    message: string;
+    image_path: string;
+    image_mime: string;
+  }
+> {
+  return db
+    .prepare(
+      `
+      SELECT
+        r.*,
+        c.name AS campaign_name,
+        c.message,
+        c.image_path,
+        c.image_mime
+      FROM campaign_recipients r
+      JOIN marketing_campaigns c ON c.id = r.campaign_id
+      WHERE r.status = 'pending'
+        AND r.next_send_at <= unixepoch()
+        AND c.status = 'active'
+      ORDER BY r.next_send_at ASC, r.id ASC
+      LIMIT ?
+    `,
+    )
+    .all(limit) as Array<
+    CampaignRecipient & {
+      campaign_name: string;
+      message: string;
+      image_path: string;
+      image_mime: string;
+    }
+  >;
+}
+
+export function markCampaignRecipientSent(id: number): void {
+  db.prepare(
+    `
+    UPDATE campaign_recipients
+    SET status = 'sent', sent_at = unixepoch(), last_error = NULL
+    WHERE id = ?
+  `,
+  ).run(id);
+}
+
+export function markCampaignRecipientFailed(id: number, error: string): void {
+  db.prepare(
+    `
+    UPDATE campaign_recipients
+    SET status = 'failed', last_error = ?
+    WHERE id = ?
+  `,
+  ).run(error.slice(0, 500), id);
+}
+
+export function finalizeCompletedCampaigns(): void {
+  db.prepare(
+    `
+    UPDATE marketing_campaigns
+    SET status = 'done', updated_at = unixepoch()
+    WHERE status = 'active'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM campaign_recipients r
+        WHERE r.campaign_id = marketing_campaigns.id
+          AND r.status = 'pending'
+      )
+  `,
+  ).run();
 }
