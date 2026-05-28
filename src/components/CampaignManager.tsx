@@ -28,6 +28,10 @@ export function CampaignManager() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  function fileLabel(file: File | null) {
+    return file ? file.name : "Ningun archivo seleccionado";
+  }
+
   async function loadCampaigns() {
     const res = await fetch("/api/campaigns", { cache: "no-store" });
     if (!res.ok) return;
@@ -233,11 +237,19 @@ export function CampaignManager() {
                     <span className="mb-1 block text-xs font-semibold text-stone-600">
                       CSV o Excel de Shopify
                     </span>
+                    <div className="flex min-w-0 items-center gap-2 rounded-md border border-stone-300 bg-white p-2">
+                      <span className="min-w-0 flex-1 truncate text-sm text-stone-600">
+                        {fileLabel(csv)}
+                      </span>
+                      <span className="shrink-0 rounded-md bg-stone-900 px-3 py-1.5 text-xs font-semibold text-white">
+                        Seleccionar
+                      </span>
+                    </div>
                     <input
                       type="file"
                       accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                       onChange={(event) => setCsv(event.target.files?.[0] ?? null)}
-                      className="w-full text-sm text-stone-700"
+                      className="sr-only"
                     />
                   </label>
 
@@ -245,11 +257,19 @@ export function CampaignManager() {
                     <span className="mb-1 block text-xs font-semibold text-stone-600">
                       Imagen de la promocion
                     </span>
+                    <div className="flex min-w-0 items-center gap-2 rounded-md border border-stone-300 bg-white p-2">
+                      <span className="min-w-0 flex-1 truncate text-sm text-stone-600">
+                        {fileLabel(image)}
+                      </span>
+                      <span className="shrink-0 rounded-md bg-stone-900 px-3 py-1.5 text-xs font-semibold text-white">
+                        Seleccionar
+                      </span>
+                    </div>
                     <input
                       type="file"
                       accept="image/*"
                       onChange={(event) => setImage(event.target.files?.[0] ?? null)}
-                      className="w-full text-sm text-stone-700"
+                      className="sr-only"
                     />
                   </label>
 
