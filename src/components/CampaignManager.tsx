@@ -19,7 +19,9 @@ export function CampaignManager() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [name, setName] = useState("Carrito abandonado");
   const [message, setMessage] = useState("");
-  const [durationDays, setDurationDays] = useState(3);
+  const [durationHours, setDurationHours] = useState(72);
+  const [minDelaySeconds, setMinDelaySeconds] = useState(300);
+  const [maxDelaySeconds, setMaxDelaySeconds] = useState(900);
   const [csv, setCsv] = useState<File | null>(null);
   const [image, setImage] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,7 +57,9 @@ export function CampaignManager() {
     const form = new FormData();
     form.set("name", name);
     form.set("message", message);
-    form.set("durationDays", String(durationDays));
+    form.set("durationHours", String(durationHours));
+    form.set("minDelaySeconds", String(minDelaySeconds));
+    form.set("maxDelaySeconds", String(Math.max(minDelaySeconds, maxDelaySeconds)));
     form.set("startHour", "10");
     form.set("endHour", "18");
     form.set("csv", csv);
@@ -147,18 +151,83 @@ export function CampaignManager() {
 
                   <label className="block">
                     <span className="mb-1 block text-xs font-semibold text-stone-600">
-                      Duracion
+                      Duracion total
                     </span>
                     <select
-                      value={durationDays}
-                      onChange={(event) => setDurationDays(Number(event.target.value))}
+                      value={durationHours}
+                      onChange={(event) => setDurationHours(Number(event.target.value))}
                       className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
                     >
-                      <option value={2}>2 dias</option>
-                      <option value={3}>3 dias</option>
-                      <option value={5}>5 dias</option>
+                      <option value={5}>5 horas</option>
+                      <option value={6}>6 horas</option>
+                      <option value={10}>10 horas</option>
+                      <option value={13}>13 horas</option>
+                      <option value={24}>24 horas</option>
+                      <option value={48}>2 dias</option>
+                      <option value={72}>3 dias</option>
+                      <option value={120}>5 dias</option>
+                      <option value={240}>10 dias</option>
+                      <option value={720}>30 dias</option>
                     </select>
                   </label>
+
+                  <div>
+                    <div className="mb-2 text-xs font-semibold text-stone-600">
+                      Pausa entre mensajes
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block">
+                        <span className="mb-1 block text-[11px] font-semibold text-stone-500">
+                          Minimo
+                        </span>
+                        <select
+                          value={minDelaySeconds}
+                          onChange={(event) => {
+                            const next = Number(event.target.value);
+                            setMinDelaySeconds(next);
+                            if (maxDelaySeconds < next) setMaxDelaySeconds(next);
+                          }}
+                          className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                        >
+                          <option value={10}>10 segundos</option>
+                          <option value={30}>30 segundos</option>
+                          <option value={60}>1 minuto</option>
+                          <option value={300}>5 minutos</option>
+                          <option value={600}>10 minutos</option>
+                          <option value={900}>15 minutos</option>
+                          <option value={1800}>30 minutos</option>
+                          <option value={3600}>1 hora</option>
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-[11px] font-semibold text-stone-500">
+                          Maximo
+                        </span>
+                        <select
+                          value={maxDelaySeconds}
+                          onChange={(event) =>
+                            setMaxDelaySeconds(
+                              Math.max(minDelaySeconds, Number(event.target.value)),
+                            )
+                          }
+                          className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                        >
+                          <option value={30}>30 segundos</option>
+                          <option value={60}>1 minuto</option>
+                          <option value={300}>5 minutos</option>
+                          <option value={600}>10 minutos</option>
+                          <option value={900}>15 minutos</option>
+                          <option value={1800}>30 minutos</option>
+                          <option value={3600}>1 hora</option>
+                          <option value={7200}>2 horas</option>
+                        </select>
+                      </label>
+                    </div>
+                    <p className="mt-1 text-xs text-stone-500">
+                      El sistema toma un tiempo aleatorio dentro de ese rango
+                      antes de pasar al siguiente contacto.
+                    </p>
+                  </div>
 
                   <label className="block">
                     <span className="mb-1 block text-xs font-semibold text-stone-600">

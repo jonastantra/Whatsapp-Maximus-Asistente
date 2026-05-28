@@ -291,7 +291,7 @@ export async function startBaileys(): Promise<BaileysHandle> {
       }, 2000);
       campaignTimer = setInterval(() => {
         void processCampaigns(sock);
-      }, 30000);
+      }, 5000);
     }
 
     if (connection === "close") {
