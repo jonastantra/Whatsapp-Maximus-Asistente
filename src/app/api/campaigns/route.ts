@@ -291,21 +291,18 @@ function scheduleRecipients(
   nextSendAt: number;
 }> {
   const now = Math.floor(Date.now() / 1000);
-  const windowSeconds = Math.max(1, endHour - startHour) * 60 * 60;
   const campaignSeconds = Math.max(1, durationHours) * 60 * 60;
-  const activeDays = Math.max(1, Math.ceil(campaignSeconds / windowSeconds));
-  const totalWindowSeconds = activeDays * windowSeconds;
-  const durationStep = Math.max(
-    minDelaySeconds,
-    Math.floor(totalWindowSeconds / Math.max(1, recipients.length)),
-  );
+  const spreadDelaySeconds =
+    recipients.length > 1
+      ? Math.floor(campaignSeconds / (recipients.length - 1))
+      : 0;
 
   let cursor = now;
 
   return recipients.map((recipient, index) => {
     if (index > 0) {
       const configuredDelay = randomBetween(minDelaySeconds, maxDelaySeconds);
-      cursor += Math.min(configuredDelay, durationStep);
+      cursor += Math.max(configuredDelay, spreadDelaySeconds);
     }
 
     return {

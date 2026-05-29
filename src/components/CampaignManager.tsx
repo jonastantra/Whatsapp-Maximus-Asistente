@@ -205,7 +205,7 @@ export function CampaignManager() {
 
                   <label className="block">
                     <span className="mb-1 block text-xs font-semibold text-stone-600">
-                      Duracion total
+                      Repartir campana en
                     </span>
                     <select
                       value={durationHours}
@@ -278,8 +278,8 @@ export function CampaignManager() {
                       </label>
                     </div>
                     <p className="mt-1 text-xs text-stone-500">
-                      El sistema toma un tiempo aleatorio dentro de ese rango
-                      antes de pasar al siguiente contacto.
+                      Si el reparto elegido requiere mas tiempo que esta pausa,
+                      el sistema espera mas para cumplir la duracion.
                     </p>
                   </div>
 
