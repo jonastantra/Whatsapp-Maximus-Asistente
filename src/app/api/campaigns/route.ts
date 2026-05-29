@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import {
   createMarketingCampaign,
   listMarketingCampaigns,
+  setMarketingCampaignStatus,
 } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -113,7 +114,7 @@ function pick(row: CsvRow, keys: string[]): string {
 
 function normalizePhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
-  if (digits.length === 10) return `52${digits}`;
+  if (digits.length === 10) return `521${digits}`;
   if (digits.length >= 11 && digits.length <= 15) return digits;
   return null;
 }
@@ -318,6 +319,33 @@ export async function GET() {
   return NextResponse.json({ campaigns: listMarketingCampaigns() });
 }
 
+export async function PATCH(req: NextRequest) {
+  const body = (await req.json()) as {
+    id?: unknown;
+    status?: unknown;
+  };
+  const id = Number(body.id);
+  const status = body.status;
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return NextResponse.json({ error: "id invalido" }, { status: 400 });
+  }
+
+  if (status !== "active" && status !== "paused") {
+    return NextResponse.json(
+      { error: "status debe ser active o paused" },
+      { status: 400 },
+    );
+  }
+
+  const campaign = setMarketingCampaignStatus(id, status);
+  if (!campaign) {
+    return NextResponse.json({ error: "Campana no encontrada" }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true, campaign });
+}
+
 export async function POST(req: NextRequest) {
   const form = await req.formData();
   const csvFile = form.get("csv");
@@ -349,38 +377,6 @@ export async function POST(req: NextRequest) {
   }
 
   const rows = await parseLeadFile(csvFile);
-  const unique = new Map<string, { phone: string; name: string | null }>();
-
-  for (const row of rows) {
-    const phone = normalizePhone(
-      pick(row, [
-        "phone",
-        "telefono",
-        "teléfono",
-        "mobile",
-        "shipping phone",
-        "billing phone",
-        "customer phone",
-        "numero",
-        "número",
-      ]),
-    );
-    if (!phone) continue;
-
-    unique.set(phone, {
-      phone,
-      name:
-        pick(row, [
-          "name",
-          "nombre",
-          "customer",
-          "customer name",
-          "first name",
-          "shipping name",
-        ]) || null,
-    });
-  }
-
   const recipients = buildLeads(rows).map((lead) => ({
     phone: lead.phone,
     name: lead.name,

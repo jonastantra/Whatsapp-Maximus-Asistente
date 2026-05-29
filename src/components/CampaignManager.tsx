@@ -28,6 +28,8 @@ export function CampaignManager() {
   const [durationHours, setDurationHours] = useState(72);
   const [minDelaySeconds, setMinDelaySeconds] = useState(300);
   const [maxDelaySeconds, setMaxDelaySeconds] = useState(900);
+  const [discountEnabled, setDiscountEnabled] = useState(false);
+  const [discountText, setDiscountText] = useState("Descuento especial disponible por WhatsApp.");
   const [csv, setCsv] = useState<File | null>(null);
   const [image, setImage] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -63,10 +65,14 @@ export function CampaignManager() {
     setBusy(true);
     setError(null);
     setSuccess(null);
+    const finalMessage =
+      discountEnabled && discountText.trim()
+        ? `${message.trim()}\n\n*${discountText.trim()}*`
+        : message.trim();
 
     const form = new FormData();
     form.set("name", name);
-    form.set("message", message);
+    form.set("message", finalMessage);
     form.set("durationHours", String(durationHours));
     form.set("minDelaySeconds", String(minDelaySeconds));
     form.set("maxDelaySeconds", String(Math.max(minDelaySeconds, maxDelaySeconds)));
@@ -99,6 +105,16 @@ export function CampaignManager() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function setCampaignStatus(id: number, status: "active" | "paused") {
+    const res = await fetch("/api/campaigns", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status }),
+    });
+    if (!res.ok) return;
+    await loadCampaigns();
   }
 
   return (
@@ -162,6 +178,30 @@ export function CampaignManager() {
                       {"{productos}"}, {"{total}"}, {"{ciudad}"}, {"{link}"}.
                     </p>
                   </label>
+
+                  <div className="rounded-md border border-stone-200 bg-stone-50 p-3">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-stone-700">
+                      <input
+                        type="checkbox"
+                        checked={discountEnabled}
+                        onChange={(event) => setDiscountEnabled(event.target.checked)}
+                        className="h-4 w-4"
+                      />
+                      Agregar descuento en negritas
+                    </label>
+                    {discountEnabled && (
+                      <input
+                        value={discountText}
+                        onChange={(event) => setDiscountText(event.target.value)}
+                        placeholder="Ej. *10% de descuento solo hoy*"
+                        className="mt-3 w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                      />
+                    )}
+                    <p className="mt-2 text-xs text-stone-500">
+                      Se agrega al final usando asteriscos para que WhatsApp lo
+                      muestre en negritas.
+                    </p>
+                  </div>
 
                   <label className="block">
                     <span className="mb-1 block text-xs font-semibold text-stone-600">
@@ -345,6 +385,31 @@ export function CampaignManager() {
                               {campaign.status}
                             </span>
                           </div>
+                          {(campaign.status === "active" ||
+                            campaign.status === "paused") && (
+                            <div className="mt-3 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void setCampaignStatus(
+                                    campaign.id,
+                                    campaign.status === "active"
+                                      ? "paused"
+                                      : "active",
+                                  );
+                                }}
+                                className={
+                                  campaign.status === "active"
+                                    ? "rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                                    : "rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                                }
+                              >
+                                {campaign.status === "active"
+                                  ? "Pausar"
+                                  : "Reanudar"}
+                              </button>
+                            </div>
+                          )}
                           <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs">
                             <div className="rounded-md bg-stone-50 p-2">
                               <div className="font-semibold text-stone-900">

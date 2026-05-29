@@ -58,6 +58,50 @@ function jidFromPhone(phone: string): string {
   return `${phone}@s.whatsapp.net`;
 }
 
+function whatsappPhoneCandidates(phone: string): string[] {
+  if (phone.includes("@")) return [phone];
+
+  const digits = phone.replace(/\D/g, "");
+  const candidates = new Set<string>();
+  if (digits) candidates.add(digits);
+
+  if (digits.length === 10) {
+    candidates.add(`521${digits}`);
+    candidates.add(`52${digits}`);
+  }
+
+  if (digits.length === 12 && digits.startsWith("52") && !digits.startsWith("521")) {
+    candidates.add(`521${digits.slice(2)}`);
+  }
+
+  if (digits.length === 13 && digits.startsWith("521")) {
+    candidates.add(`52${digits.slice(3)}`);
+  }
+
+  return [...candidates];
+}
+
+async function resolveWhatsappJid(sock: WASocket, phone: string): Promise<string> {
+  const candidates = whatsappPhoneCandidates(phone);
+
+  for (const candidate of candidates) {
+    const jid = jidFromPhone(candidate);
+    try {
+      const result = (await sock.onWhatsApp(jid))?.[0];
+      if (result?.exists && result.jid) {
+        if (result.jid !== jid) {
+          botLog(`[campana] JID resuelto ${phone} -> ${result.jid}`);
+        }
+        return result.jid;
+      }
+    } catch (err) {
+      botLog(`[campana] No se pudo validar ${jid}`, { error: String(err) });
+    }
+  }
+
+  throw new Error(`El numero no aparece activo en WhatsApp: ${phone}`);
+}
+
 async function processOutbox(sock: WASocket): Promise<void> {
   const pending = getPendingOutbox(20);
 
@@ -83,13 +127,24 @@ async function processCampaigns(sock: WASocket): Promise<void> {
         throw new Error(`Imagen no encontrada: ${item.image_path}`);
       }
 
-      await sock.sendMessage(jidFromPhone(item.phone), {
-        image: fs.readFileSync(item.image_path),
+      const image = fs.readFileSync(item.image_path);
+      if (image.length === 0) {
+        throw new Error(`Imagen vacia: ${item.image_path}`);
+      }
+
+      const jid = await resolveWhatsappJid(sock, item.phone);
+      const sent = await sock.sendMessage(jid, {
+        image,
         mimetype: item.image_mime,
         caption: item.message,
       });
       markCampaignRecipientSent(item.id);
-      botLog(`[campana] Imagen enviada a ${item.phone} (${item.campaign_name})`);
+      botLog(`[campana] Imagen enviada a ${item.phone} via ${jid}`, {
+        campaign: item.campaign_name,
+        messageId: sent?.key?.id,
+        imageBytes: image.length,
+        imageMime: item.image_mime,
+      });
     } catch (err) {
       markCampaignRecipientFailed(item.id, String(err));
       botLog(`[campana] No se pudo enviar a ${item.phone}`, {

@@ -819,6 +819,37 @@ export function listMarketingCampaigns(): CampaignListItem[] {
     .all() as CampaignListItem[];
 }
 
+export function setMarketingCampaignStatus(
+  id: number,
+  status: Extract<CampaignStatus, "active" | "paused">,
+): MarketingCampaign | null {
+  db.prepare(
+    `
+    UPDATE marketing_campaigns
+    SET status = ?, updated_at = unixepoch()
+    WHERE id = ?
+      AND status IN ('active', 'paused')
+  `,
+  ).run(status, id);
+
+  return (
+    (db
+      .prepare("SELECT * FROM marketing_campaigns WHERE id = ?")
+      .get(id) as MarketingCampaign | undefined) ?? null
+  );
+}
+
+export function skipPendingCampaignRecipients(campaignId: number): void {
+  db.prepare(
+    `
+    UPDATE campaign_recipients
+    SET status = 'skipped', last_error = 'Campana pausada/cerrada manualmente'
+    WHERE campaign_id = ?
+      AND status = 'pending'
+  `,
+  ).run(campaignId);
+}
+
 export function getDueCampaignRecipients(limit = 1): Array<
   CampaignRecipient & {
     campaign_name: string;
