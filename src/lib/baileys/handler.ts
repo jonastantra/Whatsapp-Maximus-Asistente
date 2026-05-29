@@ -148,7 +148,7 @@ export async function handleIncomingMessage(
   const startedAt = Date.now();
   botLog(`[bot] llamando LLM con ${history.length} mensajes...`);
 
-  const reply = await generateReply(history);
+  const reply = await generateReply(history, fresh);
   botLog(`[bot] LLM respondió en ${Date.now() - startedAt}ms`);
 
   insertMessage(conversation.id, "assistant", reply);

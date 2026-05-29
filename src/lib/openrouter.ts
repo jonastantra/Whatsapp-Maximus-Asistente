@@ -4,6 +4,7 @@ import {
   getBotSettings,
   searchRelevantCatalog,
   type CatalogItem,
+  type Conversation,
   type Message,
 } from "./db";
 import { SYSTEM_PROMPT } from "./system-prompt";
@@ -34,7 +35,7 @@ function formatCatalogItems(items: CatalogItem[]): string {
     .join("\n");
 }
 
-function buildSystemPrompt(history: Message[]): string {
+function buildSystemPrompt(history: Message[], conversation?: Conversation | null): string {
   const settings = getBotSettings();
   const businessPrompt = settings.custom_prompt?.trim() || SYSTEM_PROMPT;
   const userText = latestUserText(history);
@@ -95,16 +96,32 @@ function buildSystemPrompt(history: Message[]): string {
     );
   }
 
+  if (conversation?.context_enabled === 1 && conversation.context_notes?.trim()) {
+    sections.push(
+      [
+        "CONTEXTO ESPECIFICO DE ESTE CHAT:",
+        conversation.context_notes.trim(),
+        "Reglas del contexto por chat:",
+        "- Este contexto solo aplica para esta conversacion.",
+        "- Dale prioridad para responder a este cliente.",
+        "- No lo menciones literalmente salvo que ayude al cliente.",
+      ].join("\n"),
+    );
+  }
+
   return sections.join("\n\n");
 }
 
-export async function generateReply(history: Message[]): Promise<string> {
+export async function generateReply(
+  history: Message[],
+  conversation?: Conversation | null,
+): Promise<string> {
   if (!apiKey || apiKey === "sk-or-...") {
     return 'Déjame derivarte con un asesor humano.';
   }
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: "system", content: buildSystemPrompt(history) },
+    { role: "system", content: buildSystemPrompt(history, conversation) },
     ...history.map((message) => ({
       role:
         message.role === "user"

@@ -34,6 +34,7 @@ export function CampaignManager() {
   const [discountText, setDiscountText] = useState("Descuento especial disponible por WhatsApp.");
   const [csv, setCsv] = useState<File | null>(null);
   const [image, setImage] = useState<File | null>(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -102,6 +103,7 @@ export function CampaignManager() {
       setSuccess(`Campana creada con ${json.imported ?? 0} contactos.`);
       setCsv(null);
       setImage(null);
+      setFileInputKey((current) => current + 1);
       setMessage("");
       await loadCampaigns();
     } finally {
@@ -144,6 +146,10 @@ export function CampaignManager() {
   function reuseCampaign(campaign: Campaign) {
     setName(`${campaign.name} copia`);
     setMessage(campaign.message);
+    setCsv(null);
+    setImage(null);
+    setError(null);
+    setFileInputKey((current) => current + 1);
     setSuccess("Campana cargada para reutilizar. Sube CSV e imagen para crear una nueva.");
   }
 
@@ -166,7 +172,8 @@ export function CampaignManager() {
                   Campanas de carrito abandonado
                 </h2>
                 <p className="text-xs text-stone-500">
-                  CSV + imagen obligatoria, enviado poco a poco desde WhatsApp.
+                  CSV + imagen obligatoria. Puedes cerrar esta ventana y la
+                  campana sigue trabajando.
                 </p>
               </div>
               <button
@@ -327,6 +334,7 @@ export function CampaignManager() {
                       </span>
                     </div>
                     <input
+                      key={`csv-${fileInputKey}`}
                       type="file"
                       accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                       onChange={(event) => setCsv(event.target.files?.[0] ?? null)}
@@ -347,6 +355,7 @@ export function CampaignManager() {
                       </span>
                     </div>
                     <input
+                      key={`image-${fileInputKey}`}
                       type="file"
                       accept="image/*"
                       onChange={(event) => setImage(event.target.files?.[0] ?? null)}

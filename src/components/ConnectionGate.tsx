@@ -180,6 +180,22 @@ export function ConnectionGate() {
     await refresh();
   }
 
+  async function changeConversationContext(enabled: boolean, notes: string) {
+    if (!selectedId) return;
+
+    const res = await fetch(`/api/conversations/${selectedId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contextEnabled: enabled,
+        contextNotes: notes,
+      }),
+    });
+
+    if (!res.ok) return;
+    await refresh();
+  }
+
   async function restartConnection() {
     await fetch("/api/connection/restart", { method: "POST" });
     await refresh();
@@ -229,6 +245,7 @@ export function ConnectionGate() {
           onModeChange={changeMode}
           onSendHuman={sendHuman}
           onDelete={deleteSelected}
+          onContextChange={changeConversationContext}
         />
       </div>
     </main>

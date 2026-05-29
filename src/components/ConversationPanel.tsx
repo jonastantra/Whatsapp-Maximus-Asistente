@@ -13,6 +13,7 @@ interface ConversationPanelProps {
   onModeChange: (mode: ConversationMode) => Promise<void>;
   onSendHuman: (content: string) => Promise<void>;
   onDelete: () => Promise<void>;
+  onContextChange: (enabled: boolean, notes: string) => Promise<void>;
 }
 
 export function ConversationPanel({
@@ -23,8 +24,12 @@ export function ConversationPanel({
   onModeChange,
   onSendHuman,
   onDelete,
+  onContextChange,
 }: ConversationPanelProps) {
   const [draft, setDraft] = useState("");
+  const [contextOpen, setContextOpen] = useState(false);
+  const [contextNotes, setContextNotes] = useState("");
+  const [contextEnabled, setContextEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -43,12 +48,30 @@ export function ConversationPanel({
 
     if (conversationChanged) {
       shouldStickToBottomRef.current = true;
+      setContextNotes(conversation?.context_notes ?? "");
+      setContextEnabled(conversation?.context_enabled === 1);
     }
 
     if (shouldStickToBottomRef.current) {
       bottomRef.current?.scrollIntoView({ block: "end" });
     }
-  }, [conversation?.id, messages]);
+  }, [
+    conversation?.context_enabled,
+    conversation?.context_notes,
+    conversation?.id,
+    messages,
+  ]);
+
+  async function saveContext(enabled = contextEnabled) {
+    if (!conversation) return;
+    setBusy(true);
+    try {
+      await onContextChange(enabled, contextNotes);
+      setContextEnabled(enabled);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function handleScroll(event: UIEvent<HTMLDivElement>) {
     const element = event.currentTarget;
@@ -107,6 +130,17 @@ export function ConversationPanel({
           ) : null}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setContextOpen((current) => !current)}
+            className={
+              conversation.context_enabled === 1
+                ? "rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                : "rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+            }
+          >
+            Contexto IA
+          </button>
           <ModeToggle
             mode={conversation.mode}
             disabled={busy}
@@ -125,6 +159,63 @@ export function ConversationPanel({
           </button>
         </div>
       </div>
+
+      {contextOpen && (
+        <div className="border-b border-stone-200 bg-white px-4 py-3">
+          <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <input
+                  id="chat-context-enabled"
+                  type="checkbox"
+                  checked={contextEnabled}
+                  onChange={(event) => setContextEnabled(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                <label
+                  htmlFor="chat-context-enabled"
+                  className="text-sm font-semibold text-stone-800"
+                >
+                  Activar contexto solo para este chat
+                </label>
+              </div>
+              <textarea
+                value={contextNotes}
+                onChange={(event) => setContextNotes(event.target.value)}
+                rows={3}
+                placeholder="Ej. Este cliente pregunta por promo de tienda fisica. Ofrecer recogida en Guelatao o Neza y mantener tono directo."
+                className="w-full resize-none rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-stone-500"
+              />
+              <p className="mt-1 text-xs text-stone-500">
+                La IA usara esta nota solo cuando responda en esta conversacion.
+              </p>
+            </div>
+            <div className="flex gap-2 md:flex-col">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  void saveContext(contextEnabled);
+                }}
+                className="rounded-md bg-stone-900 px-3 py-2 text-sm font-semibold text-white hover:bg-stone-700 disabled:bg-stone-300"
+              >
+                Guardar
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setContextEnabled(false);
+                  void saveContext(false);
+                }}
+                className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-100 disabled:opacity-50"
+              >
+                Desactivar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div
         ref={scrollRef}

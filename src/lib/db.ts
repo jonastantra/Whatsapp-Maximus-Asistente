@@ -16,6 +16,8 @@ export interface Conversation {
   phone: string;
   name: string | null;
   mode: ConversationMode;
+  context_enabled: 0 | 1;
+  context_notes: string | null;
   last_message_at: number | null;
   created_at: number;
 }
@@ -264,6 +266,18 @@ ensureColumn(
 );
 
 ensureColumn(
+  "conversations",
+  "context_enabled",
+  "ALTER TABLE conversations ADD COLUMN context_enabled INTEGER NOT NULL DEFAULT 0",
+);
+
+ensureColumn(
+  "conversations",
+  "context_notes",
+  "ALTER TABLE conversations ADD COLUMN context_notes TEXT",
+);
+
+ensureColumn(
   "campaign_recipients",
   "personalized_message",
   "ALTER TABLE campaign_recipients ADD COLUMN personalized_message TEXT",
@@ -482,6 +496,22 @@ export function setMode(
     mode,
     conversationId,
   );
+  return getConversationById(conversationId);
+}
+
+export function setConversationContext(
+  conversationId: number,
+  enabled: boolean,
+  notes: string,
+): Conversation | null {
+  db.prepare(
+    `
+    UPDATE conversations
+    SET context_enabled = ?, context_notes = ?
+    WHERE id = ?
+  `,
+  ).run(enabled ? 1 : 0, notes.trim() || null, conversationId);
+
   return getConversationById(conversationId);
 }
 
