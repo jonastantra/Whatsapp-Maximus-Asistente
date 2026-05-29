@@ -78,8 +78,8 @@ export function CampaignManager() {
     form.set("durationHours", String(durationHours));
     form.set("minDelaySeconds", String(minDelaySeconds));
     form.set("maxDelaySeconds", String(Math.max(minDelaySeconds, maxDelaySeconds)));
-    form.set("startHour", "10");
-    form.set("endHour", "18");
+    form.set("startHour", "0");
+    form.set("endHour", "24");
     form.set("csv", csv);
     form.set("image", image);
 
@@ -309,7 +309,8 @@ export function CampaignManager() {
                     </div>
                     <p className="mt-1 text-xs text-stone-500">
                       Si el reparto elegido requiere mas tiempo que esta pausa,
-                      el sistema espera mas para cumplir la duracion.
+                      el sistema espera mas para cumplir la duracion. Empieza
+                      inmediatamente al crear o reintentar.
                     </p>
                   </div>
 

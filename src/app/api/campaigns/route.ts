@@ -258,6 +258,8 @@ function nextWindowTimestamp(
   startHour: number,
   endHour: number,
 ): number {
+  if (startHour <= 0 && endHour >= 24) return startAt;
+
   const date = new Date(startAt * 1000);
   const hour = date.getHours();
 
@@ -382,8 +384,8 @@ export async function POST(req: NextRequest) {
     86400,
     Math.max(minDelaySeconds, Number(form.get("maxDelaySeconds") ?? 900)),
   );
-  const startHour = Math.min(22, Math.max(0, Number(form.get("startHour") ?? 10)));
-  const endHour = Math.min(23, Math.max(startHour + 1, Number(form.get("endHour") ?? 18)));
+  const startHour = Math.min(23, Math.max(0, Number(form.get("startHour") ?? 0)));
+  const endHour = Math.min(24, Math.max(startHour + 1, Number(form.get("endHour") ?? 24)));
 
   if (!(csvFile instanceof File)) {
     return NextResponse.json({ error: "Sube un CSV" }, { status: 400 });
