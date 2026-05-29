@@ -4,7 +4,9 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import {
   createMarketingCampaign,
+  deleteMarketingCampaign,
   listMarketingCampaigns,
+  requeueCampaignRecipients,
   setMarketingCampaignStatus,
 } from "@/lib/db";
 
@@ -318,14 +320,22 @@ export async function GET() {
 
 export async function PATCH(req: NextRequest) {
   const body = (await req.json()) as {
+    action?: unknown;
     id?: unknown;
+    includeSent?: unknown;
     status?: unknown;
   };
   const id = Number(body.id);
   const status = body.status;
+  const action = body.action;
 
   if (!Number.isInteger(id) || id <= 0) {
     return NextResponse.json({ error: "id invalido" }, { status: 400 });
+  }
+
+  if (action === "requeue") {
+    requeueCampaignRecipients(id, body.includeSent === true);
+    return NextResponse.json({ ok: true });
   }
 
   if (status !== "active" && status !== "paused") {
@@ -341,6 +351,16 @@ export async function PATCH(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, campaign });
+}
+
+export async function DELETE(req: NextRequest) {
+  const id = Number(new URL(req.url).searchParams.get("id"));
+  if (!Number.isInteger(id) || id <= 0) {
+    return NextResponse.json({ error: "id invalido" }, { status: 400 });
+  }
+
+  deleteMarketingCampaign(id);
+  return NextResponse.json({ ok: true });
 }
 
 export async function POST(req: NextRequest) {

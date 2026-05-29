@@ -14,7 +14,9 @@ import {
   finalizeCompletedCampaigns,
   getConnectionState,
   getDueCampaignRecipients,
+  getOrCreateConversation,
   getPendingOutbox,
+  insertMessage,
   markCampaignRecipientFailed,
   markCampaignRecipientSent,
   markOutboxSent,
@@ -138,6 +140,8 @@ async function processCampaigns(sock: WASocket): Promise<void> {
         mimetype: item.image_mime,
         caption: item.message,
       });
+      const conversation = getOrCreateConversation(jid, item.name);
+      insertMessage(conversation.id, "human", item.message);
       markCampaignRecipientSent(item.id);
       botLog(`[campana] Imagen enviada a ${item.phone} via ${jid}`, {
         campaign: item.campaign_name,

@@ -11,6 +11,8 @@ interface Campaign {
   pending_recipients: number;
   sent_recipients: number;
   failed_recipients: number;
+  skipped_recipients: number;
+  last_error: string | null;
   created_at: number;
 }
 
@@ -115,6 +117,34 @@ export function CampaignManager() {
     });
     if (!res.ok) return;
     await loadCampaigns();
+  }
+
+  async function deleteCampaign(id: number) {
+    if (!window.confirm("Eliminar esta campana y sus destinatarios?")) return;
+    const res = await fetch(`/api/campaigns?id=${id}`, { method: "DELETE" });
+    if (!res.ok) return;
+    await loadCampaigns();
+  }
+
+  async function requeueCampaign(id: number, includeSent: boolean) {
+    const label = includeSent
+      ? "reenviar a todos, incluso los marcados como enviados"
+      : "reintentar pendientes y fallidos";
+    if (!window.confirm(`Confirmar ${label}?`)) return;
+
+    const res = await fetch("/api/campaigns", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, action: "requeue", includeSent }),
+    });
+    if (!res.ok) return;
+    await loadCampaigns();
+  }
+
+  function reuseCampaign(campaign: Campaign) {
+    setName(`${campaign.name} copia`);
+    setMessage(campaign.message);
+    setSuccess("Campana cargada para reutilizar. Sube CSV e imagen para crear una nueva.");
   }
 
   return (
@@ -385,9 +415,10 @@ export function CampaignManager() {
                               {campaign.status}
                             </span>
                           </div>
-                          {(campaign.status === "active" ||
-                            campaign.status === "paused") && (
-                            <div className="mt-3 flex justify-end">
+                          <div className="mt-3 flex flex-wrap justify-end gap-2">
+                            {(campaign.status === "active" ||
+                              campaign.status === "paused") && (
+                              <>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -408,9 +439,49 @@ export function CampaignManager() {
                                   ? "Pausar"
                                   : "Reanudar"}
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void requeueCampaign(campaign.id, false);
+                                }}
+                                className="rounded-md border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800 hover:bg-sky-100"
+                              >
+                                Reintentar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void requeueCampaign(campaign.id, true);
+                                }}
+                                className="rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-800 hover:bg-purple-100"
+                              >
+                                Reenviar todo
+                              </button>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => reuseCampaign(campaign)}
+                              className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-100"
+                            >
+                              Reutilizar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void deleteCampaign(campaign.id);
+                              }}
+                              className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                          {campaign.last_error && (
+                            <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+                              Ultimo error: {campaign.last_error}
                             </div>
                           )}
-                          <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs">
+                          <div className="mt-3 grid grid-cols-5 gap-2 text-center text-xs">
                             <div className="rounded-md bg-stone-50 p-2">
                               <div className="font-semibold text-stone-900">
                                 {campaign.total_recipients}
@@ -434,6 +505,12 @@ export function CampaignManager() {
                                 {campaign.failed_recipients}
                               </div>
                               <div className="text-red-700">fall.</div>
+                            </div>
+                            <div className="rounded-md bg-stone-50 p-2">
+                              <div className="font-semibold text-stone-800">
+                                {campaign.skipped_recipients}
+                              </div>
+                              <div className="text-stone-500">omit.</div>
                             </div>
                           </div>
                         </div>

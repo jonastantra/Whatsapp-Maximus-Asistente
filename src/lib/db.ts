@@ -112,6 +112,8 @@ export interface CampaignListItem extends MarketingCampaign {
   pending_recipients: number;
   sent_recipients: number;
   failed_recipients: number;
+  skipped_recipients: number;
+  last_error: string | null;
 }
 
 type ConnectionStatePatch = {
@@ -809,7 +811,16 @@ export function listMarketingCampaigns(): CampaignListItem[] {
         COUNT(r.id) AS total_recipients,
         SUM(CASE WHEN r.status = 'pending' THEN 1 ELSE 0 END) AS pending_recipients,
         SUM(CASE WHEN r.status = 'sent' THEN 1 ELSE 0 END) AS sent_recipients,
-        SUM(CASE WHEN r.status = 'failed' THEN 1 ELSE 0 END) AS failed_recipients
+        SUM(CASE WHEN r.status = 'failed' THEN 1 ELSE 0 END) AS failed_recipients,
+        SUM(CASE WHEN r.status = 'skipped' THEN 1 ELSE 0 END) AS skipped_recipients,
+        (
+          SELECT rr.last_error
+          FROM campaign_recipients rr
+          WHERE rr.campaign_id = c.id
+            AND rr.last_error IS NOT NULL
+          ORDER BY rr.id DESC
+          LIMIT 1
+        ) AS last_error
       FROM marketing_campaigns c
       LEFT JOIN campaign_recipients r ON r.campaign_id = c.id
       GROUP BY c.id
@@ -846,6 +857,39 @@ export function skipPendingCampaignRecipients(campaignId: number): void {
     SET status = 'skipped', last_error = 'Campana pausada/cerrada manualmente'
     WHERE campaign_id = ?
       AND status = 'pending'
+  `,
+  ).run(campaignId);
+}
+
+export function deleteMarketingCampaign(id: number): void {
+  db.prepare("DELETE FROM marketing_campaigns WHERE id = ?").run(id);
+}
+
+export function requeueCampaignRecipients(
+  campaignId: number,
+  includeSent: boolean,
+): void {
+  const statusFilter = includeSent
+    ? "status IN ('pending', 'failed', 'skipped', 'sent')"
+    : "status IN ('pending', 'failed', 'skipped')";
+
+  db.prepare(
+    `
+    UPDATE campaign_recipients
+    SET status = 'pending',
+      next_send_at = unixepoch(),
+      sent_at = NULL,
+      last_error = NULL
+    WHERE campaign_id = ?
+      AND ${statusFilter}
+  `,
+  ).run(campaignId);
+
+  db.prepare(
+    `
+    UPDATE marketing_campaigns
+    SET status = 'active', updated_at = unixepoch()
+    WHERE id = ?
   `,
   ).run(campaignId);
 }
