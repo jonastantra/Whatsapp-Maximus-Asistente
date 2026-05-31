@@ -193,7 +193,11 @@ function clearCampaignTimer(): void {
 }
 
 function clearAuthSession(): void {
-  fs.rmSync(authDir, { recursive: true, force: true });
+  fs.mkdirSync(authDir, { recursive: true });
+
+  for (const entry of fs.readdirSync(authDir)) {
+    fs.rmSync(path.join(authDir, entry), { recursive: true, force: true });
+  }
 }
 
 async function cleanupSocket(): Promise<void> {

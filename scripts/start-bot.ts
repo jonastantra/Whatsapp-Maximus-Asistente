@@ -14,6 +14,14 @@ fs.mkdirSync(dataDir, { recursive: true });
 let handle: BaileysHandle | null = null;
 let restarting = false;
 
+function clearAuthSession(): void {
+  fs.mkdirSync(authDir, { recursive: true });
+
+  for (const entry of fs.readdirSync(authDir)) {
+    fs.rmSync(path.join(authDir, entry), { recursive: true, force: true });
+  }
+}
+
 async function start(): Promise<void> {
   console.log("[bot] Iniciando cliente Baileys...");
   setConnectionState({ status: "connecting" });
@@ -42,12 +50,12 @@ async function restartClean(): Promise<void> {
     );
 
     if (handle) {
-      await handle.shutdown({ logout: shouldResetSession });
+      await handle.shutdown();
       handle = null;
     }
 
     if (shouldResetSession) {
-      fs.rmSync(authDir, { recursive: true, force: true });
+      clearAuthSession();
       setConnectionState({
         status: "disconnected",
         qr_string: null,
