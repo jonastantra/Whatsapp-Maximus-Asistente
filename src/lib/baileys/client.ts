@@ -39,7 +39,7 @@ let outboxTimer: NodeJS.Timeout | null = null;
 let campaignTimer: NodeJS.Timeout | null = null;
 let loggedOutReconnectAttempts = 0;
 const seenMessageIds = new Set<string>();
-const maxLoggedOutReconnectAttempts = 3;
+const maxLoggedOutReconnectAttempts = 0;
 
 type ReconnectOptions = {
   clearAuth?: boolean;

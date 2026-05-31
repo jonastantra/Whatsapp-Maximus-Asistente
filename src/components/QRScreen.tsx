@@ -6,11 +6,18 @@ interface QRScreenProps {
   status: string;
   qrPng: string | null;
   onRetry: () => Promise<void>;
+  onResetSession: () => Promise<void>;
 }
 
-export function QRScreen({ status, qrPng, onRetry }: QRScreenProps) {
+export function QRScreen({
+  status,
+  qrPng,
+  onRetry,
+  onResetSession,
+}: QRScreenProps) {
   const [elapsed, setElapsed] = useState(0);
   const [retrying, setRetrying] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     const startedAt = Date.now();
@@ -34,6 +41,15 @@ export function QRScreen({ status, qrPng, onRetry }: QRScreenProps) {
       await onRetry();
     } finally {
       setRetrying(false);
+    }
+  }
+
+  async function resetSession() {
+    setResetting(true);
+    try {
+      await onResetSession();
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -76,19 +92,31 @@ export function QRScreen({ status, qrPng, onRetry }: QRScreenProps) {
         {!qrPng && elapsed > 20 ? (
           <div className="mt-4 rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-800">
             <p>
-              Seguimos intentando reconectar sin cerrar tu sesion de WhatsApp.
-              Si tarda demasiado, puedes forzar un reinicio suave.
+              Seguimos intentando reconectar. Si WhatsApp invalido la sesion,
+              genera un QR nuevo y vuelve a vincular el numero.
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                void retry();
-              }}
-              disabled={retrying}
-              className="mt-3 rounded-md bg-amber-700 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:bg-amber-300"
-            >
-              {retrying ? "Reintentando..." : "Reintentar conexion"}
-            </button>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => {
+                  void retry();
+                }}
+                disabled={retrying || resetting}
+                className="rounded-md border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:text-amber-300"
+              >
+                {retrying ? "Reintentando..." : "Reintentar"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void resetSession();
+                }}
+                disabled={retrying || resetting}
+                className="rounded-md bg-amber-700 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:bg-amber-300"
+              >
+                {resetting ? "Preparando QR..." : "Generar QR nuevo"}
+              </button>
+            </div>
           </div>
         ) : null}
       </section>

@@ -196,8 +196,12 @@ export function ConnectionGate() {
     await refresh();
   }
 
-  async function restartConnection() {
-    await fetch("/api/connection/restart", { method: "POST" });
+  async function restartConnection(resetSession = false) {
+    await fetch("/api/connection/restart", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resetSession }),
+    });
     await refresh();
   }
 
@@ -219,6 +223,7 @@ export function ConnectionGate() {
         status={connection.status}
         qrPng={connection.qrPng}
         onRetry={restartConnection}
+        onResetSession={() => restartConnection(true)}
       />
     );
   }
