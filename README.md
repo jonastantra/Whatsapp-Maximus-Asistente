@@ -107,11 +107,18 @@ WhatsApp la invalida, usa `Reiniciar conexión`; restablece la sesión solo como
 
 El botón `Exportar` abre un selector privado:
 
-1. Busca y marca únicamente los chats que quieres incluir.
-2. Opcionalmente clasifícalos como `Negocio`, `Personal`, `No exportar` o
+1. Usa `Exportar todos los chats` para descargar en un solo CSV todos los
+   mensajes y conversaciones retenidos por esta aplicación. Los chats marcados
+   como `No exportar` se omiten incluso si se llama directamente a la API.
+2. Usa `Exportar todos los números` para crear un CSV compatible con Google
+   Contacts sin selección manual. Los números se normalizan y deduplican; el
+   archivo aclara que el estado de la agenda del teléfono no está disponible.
+3. Para una exportación parcial, busca y marca únicamente los chats que quieres
+   incluir.
+4. Opcionalmente clasifícalos como `Negocio`, `Personal`, `No exportar` o
    déjalos `Sin clasificar`. La clasificación solo ayuda a filtrar; nunca
    excluye automáticamente el teléfono personal ni otro chat.
-3. Descarga:
+5. Descarga:
    - `Contactos para Google`: CSV con columnas compatibles con Google
      Contacts.
    - `Exportar chats`: JSONL estructurado o CSV ligero, con filtro de fechas.
@@ -125,6 +132,16 @@ El resumen opcional de JSONL es determinista y local: cuenta mensajes, separa
 roles, extrae términos frecuentes y agrega un extracto reciente. No llama a
 OpenRouter ni envía conversaciones a ninguna IA. El archivo resultante sí se
 puede entregar manualmente a otra herramienta bajo decisión del usuario.
+
+La exportación total significa **todo lo almacenado en `data/messages.db`**.
+No puede reconstruir conversaciones anteriores a la instalación, mensajes que
+WhatsApp/Baileys nunca entregó al proceso, ni chats que ya fueron borrados de la
+base local.
+
+Para la exportación total de contactos, un registro que solo tenga LID y no
+incluya un JID de número telefónico se omite: un LID no se convierte ni se
+presenta como si fuera un teléfono. El panel informa cuántos registros
+solo-LID fueron omitidos y cuántos números duplicados se unificaron.
 
 ## Personalizar el prompt
 
@@ -148,6 +165,17 @@ Incluye:
 - `Procfile`
 - `nixpacks.toml`
 - `.nvmrc`
+
+`nixpacks.toml` define la instalación, `npm run build` y el arranque con
+`npm run start:all`; no decide qué rama despliega el panel ni activa por sí
+solo un webhook. En EasyPanel, la fuente del servicio debe apuntar a este
+repositorio y a la rama `main`. Si `Auto Deploy` está habilitado, cada push
+dispara el despliegue; si no, usa el botón `Deploy` o el webhook del servicio.
+Tras desplegar, el modal debe mostrar `Exportaciones completas` y los botones
+`Exportar todos los números` y `Exportar todos los chats`.
+
+El exportador también aparece en la pantalla de QR/reconexión como
+`Exportar datos guardados`; no depende de que WhatsApp esté conectado.
 
 Configura volúmenes persistentes obligatorios:
 

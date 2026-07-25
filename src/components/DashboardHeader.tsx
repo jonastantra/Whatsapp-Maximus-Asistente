@@ -30,8 +30,8 @@ export function DashboardHeader({
   onCategoryChange,
 }: DashboardHeaderProps) {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-stone-200 bg-white px-4">
-      <div>
+    <header className="flex shrink-0 flex-col gap-3 border-b border-stone-200 bg-white px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="shrink-0">
         <h1 className="text-base font-semibold text-stone-900">
           Agente WhatsApp
         </h1>
@@ -39,7 +39,7 @@ export function DashboardHeader({
           {phone ? `Conectado: ${phone}` : "Conectado"}
         </p>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
         <GlobalPauseToggle
           aiPaused={aiPaused}
           onChange={onAiPausedChange}

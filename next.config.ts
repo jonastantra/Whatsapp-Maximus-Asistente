@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: [
-    "@whiskeysockets/baileys",
+    "baileys",
     "better-sqlite3",
     "pino",
   ],

@@ -53,9 +53,67 @@ export function buildGoogleContactsCsv(
         "Custom Field 2 - Value": conversation.name
           ? "Nombre mostrado por WhatsApp"
           : "Sin nombre disponible",
+        "Custom Field 3 - Type": "Estado del número",
+        "Custom Field 3 - Value": phone
+          ? "Número proporcionado o derivado de un JID PN de WhatsApp; estado de agenda no disponible"
+          : "Solo LID; número telefónico no disponible",
       };
     }),
   );
+}
+
+export function buildAllGoogleContactsCsv(conversations: Conversation[]): {
+  csv: string;
+  exportedCount: number;
+  skippedLidOnly: number;
+  duplicateCount: number;
+} {
+  const byPhone = new Map<string, Conversation>();
+  let skippedLidOnly = 0;
+  let duplicateCount = 0;
+
+  for (const conversation of conversations) {
+    const phone = exportablePhone(
+      conversation.phone,
+      conversation.alternate_jid,
+    );
+    const normalized = phone.replace(/\D/g, "");
+    if (!normalized) {
+      skippedLidOnly += 1;
+      continue;
+    }
+
+    const existing = byPhone.get(normalized);
+    if (!existing) {
+      byPhone.set(normalized, conversation);
+      continue;
+    }
+
+    duplicateCount += 1;
+    byPhone.set(normalized, {
+      ...existing,
+      name: existing.name || conversation.name,
+      export_category:
+        existing.export_category === "business" ||
+        conversation.export_category === "business"
+          ? "business"
+          : existing.export_category,
+    });
+  }
+
+  const contacts = [...byPhone.values()].sort((left, right) =>
+    (left.name || exportablePhone(left.phone, left.alternate_jid)).localeCompare(
+      right.name || exportablePhone(right.phone, right.alternate_jid),
+      "es",
+    ),
+  );
+
+  return {
+    csv: buildGoogleContactsCsv(contacts),
+    exportedCount: contacts.length,
+    skippedLidOnly,
+    duplicateCount,
+  };
 }
 
 const stopWords = new Set([
@@ -143,21 +201,68 @@ export function buildConversationJsonl(
     .join("\n");
 }
 
-export function buildConversationCsv(messages: ExportMessage[]): string {
-  return rowsToCsv(
-    messages.map((message) => ({
-      conversation_id: message.conversation_id,
-      contact_name: message.conversation_name ?? "",
-      whatsapp_jid: message.conversation_phone,
-      category: message.export_category,
-      timestamp_iso: new Date(message.created_at * 1000).toISOString(),
-      sender:
-        message.role === "user"
-          ? "contact"
-          : message.role === "assistant"
-            ? "assistant"
-            : "human",
-      message: message.content,
-    })),
-  );
+function conversationMessageRow(
+  message: ExportMessage,
+  conversation?: Conversation,
+): Record<string, unknown> {
+  return {
+    conversation_id: message.conversation_id,
+    contact_name: message.conversation_name ?? "",
+    phone: conversation
+      ? exportablePhone(conversation.phone, conversation.alternate_jid)
+      : "",
+    whatsapp_jid: message.conversation_phone,
+    category: message.export_category,
+    timestamp_iso: new Date(message.created_at * 1000).toISOString(),
+    sender:
+      message.role === "user"
+        ? "contact"
+        : message.role === "assistant"
+          ? "assistant"
+          : "human",
+    message: message.content,
+  };
+}
+
+export function buildConversationCsv(
+  messages: ExportMessage[],
+  conversations: Conversation[] = [],
+): string {
+  if (conversations.length === 0) {
+    return rowsToCsv(messages.map((message) => conversationMessageRow(message)));
+  }
+
+  const rows: Array<Record<string, unknown>> = [];
+  const messagesByConversation = new Map<number, ExportMessage[]>();
+  for (const message of messages) {
+    const current = messagesByConversation.get(message.conversation_id) ?? [];
+    current.push(message);
+    messagesByConversation.set(message.conversation_id, current);
+  }
+
+  for (const conversation of conversations) {
+    const chatMessages = messagesByConversation.get(conversation.id) ?? [];
+    if (chatMessages.length === 0) {
+      rows.push({
+        conversation_id: conversation.id,
+        contact_name: conversation.name ?? "",
+        phone: exportablePhone(
+          conversation.phone,
+          conversation.alternate_jid,
+        ),
+        whatsapp_jid: conversation.phone,
+        category: conversation.export_category,
+        timestamp_iso: "",
+        sender: "",
+        message: "",
+      });
+      continue;
+    }
+    rows.push(
+      ...chatMessages.map((message) =>
+        conversationMessageRow(message, conversation),
+      ),
+    );
+  }
+  return rowsToCsv(rows);
 }

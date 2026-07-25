@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 
 interface QRScreenProps {
   status: string;
   qrPng: string | null;
   onRetry: () => Promise<void>;
   onResetSession: () => Promise<void>;
+  dataTools?: ReactNode;
 }
 
 export function QRScreen({
@@ -14,6 +16,7 @@ export function QRScreen({
   qrPng,
   onRetry,
   onResetSession,
+  dataTools,
 }: QRScreenProps) {
   const [elapsed, setElapsed] = useState(0);
   const [retrying, setRetrying] = useState(false);
@@ -55,6 +58,9 @@ export function QRScreen({
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-stone-100 p-4">
+      {dataTools ? (
+        <div className="fixed right-4 top-4 z-20">{dataTools}</div>
+      ) : null}
       <section className="w-full max-w-md rounded-lg border border-stone-200 bg-white p-6 text-center shadow-sm">
         <h1 className="text-xl font-semibold text-stone-900">
           Conectar numero

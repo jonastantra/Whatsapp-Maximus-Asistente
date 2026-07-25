@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import {
+  getAllMessagesForExport,
   getMessagesForExport,
+  listExportableConversations,
   listConversationsByIds,
 } from "@/lib/db";
 import {
@@ -22,7 +24,31 @@ export async function POST(request: Request) {
     includeSummary?: unknown;
     from?: unknown;
     to?: unknown;
+    allStored?: unknown;
   } | null;
+  const allStored = body?.allStored === true;
+
+  if (allStored) {
+    const conversations = listExportableConversations();
+    if (conversations.length === 0) {
+      return NextResponse.json(
+        { error: "No hay conversaciones exportables almacenadas." },
+        { status: 400 },
+      );
+    }
+    const csv = buildConversationCsv(
+      getAllMessagesForExport(),
+      conversations,
+    );
+    return new NextResponse(csv, {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition":
+          'attachment; filename="todas-conversaciones-almacenadas.csv"',
+      },
+    });
+  }
+
   const ids = Array.isArray(body?.conversationIds)
     ? [...new Set(body.conversationIds)]
         .filter((id): id is number => Number.isInteger(id) && id > 0)
@@ -53,7 +79,7 @@ export async function POST(request: Request) {
   });
   const content =
     format === "csv"
-      ? buildConversationCsv(messages)
+      ? buildConversationCsv(messages, conversations)
       : buildConversationJsonl(
           conversations,
           messages,

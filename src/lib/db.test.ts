@@ -3,13 +3,16 @@ import test from "node:test";
 import {
   deleteConversation,
   enqueueOutbox,
+  getAllMessagesForExport,
   getMessages,
   getOrCreateConversation,
   getPendingOutbox,
   insertMessage,
+  listExportableConversations,
   markOutboxFailed,
   markOutboxSending,
   retryOutboxForMessage,
+  setConversationExportCategory,
 } from "./db";
 
 test("persists delivery state and allows an explicit retry", () => {
@@ -49,6 +52,27 @@ test("persists delivery state and allows an explicit retry", () => {
       (message) => message.id === messageId,
     );
     assert.equal(retried?.delivery_status, "pending");
+
+    assert.ok(
+      listExportableConversations().some(
+        (item) => item.id === conversation.id,
+      ),
+    );
+    assert.ok(
+      getAllMessagesForExport().some((item) => item.id === messageId),
+    );
+
+    setConversationExportCategory(conversation.id, "excluded");
+    assert.equal(
+      listExportableConversations().some(
+        (item) => item.id === conversation.id,
+      ),
+      false,
+    );
+    assert.equal(
+      getAllMessagesForExport().some((item) => item.id === messageId),
+      false,
+    );
   } finally {
     deleteConversation(conversation.id);
   }

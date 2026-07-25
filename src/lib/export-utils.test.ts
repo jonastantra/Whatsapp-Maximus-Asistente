@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Conversation, ExportMessage } from "./db";
 import {
+  buildAllGoogleContactsCsv,
+  buildConversationCsv,
   buildConversationJsonl,
   buildGoogleContactsCsv,
 } from "./export-utils";
@@ -25,6 +27,48 @@ test("creates Google Contacts-compatible CSV without claiming a saved-contact st
   assert.match(csv, /"\+5215512345678"/);
   assert.match(csv, /no confirma que esté guardado en la agenda/);
   assert.doesNotMatch(csv, /contacto guardado/i);
+});
+
+test("includes stored conversations with no messages in the all-chat CSV", () => {
+  const emptyConversation: Conversation = {
+    ...conversation,
+    id: 4,
+    phone: "5215599999999@s.whatsapp.net",
+    name: "Chat vacío",
+  };
+  const csv = buildConversationCsv([], [emptyConversation]);
+  assert.match(csv, /"Chat vacío"/);
+  assert.match(csv, /"\+5215599999999"/);
+  assert.match(csv, /"conversation_id","contact_name","phone"/);
+});
+
+test("deduplicates all-contact export by normalized phone and skips LID-only records", () => {
+  const duplicate: Conversation = {
+    ...conversation,
+    id: 2,
+    phone: "987654321@lid",
+    alternate_jid: "5215512345678@s.whatsapp.net",
+    name: null,
+  };
+  const lidOnly: Conversation = {
+    ...conversation,
+    id: 3,
+    phone: "111222333@lid",
+    alternate_jid: null,
+    name: "Sin teléfono",
+  };
+
+  const result = buildAllGoogleContactsCsv([
+    conversation,
+    duplicate,
+    lidOnly,
+  ]);
+  assert.equal(result.exportedCount, 1);
+  assert.equal(result.duplicateCount, 1);
+  assert.equal(result.skippedLidOnly, 1);
+  assert.equal(result.csv.match(/\+5215512345678/g)?.length, 1);
+  assert.match(result.csv, /estado de agenda no disponible/i);
+  assert.doesNotMatch(result.csv, /111222333@lid/);
 });
 
 test("builds a deterministic local JSONL summary and makes no AI claim", () => {

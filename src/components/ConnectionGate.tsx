@@ -11,6 +11,7 @@ import type {
 import { ConversationList } from "./ConversationList";
 import { ConversationPanel } from "./ConversationPanel";
 import { DashboardHeader } from "./DashboardHeader";
+import { ExportCenter } from "./ExportCenter";
 import { QRScreen } from "./QRScreen";
 
 interface ConnectionResponse {
@@ -72,13 +73,6 @@ export function ConnectionGate() {
     const settingsJson = (await settingsRes.json()) as SettingsResponse;
     setAiPaused(settingsJson.settings.ai_paused === 1);
 
-    if (nextConnection.status !== "connected") {
-      setConversations([]);
-      setSelectedId(null);
-      setMessages([]);
-      return;
-    }
-
     const conversationsRes = await fetch("/api/conversations", {
       cache: "no-store",
     });
@@ -86,6 +80,12 @@ export function ConnectionGate() {
       conversations: ConversationListItem[];
     };
     setConversations(conversationsJson.conversations);
+
+    if (nextConnection.status !== "connected") {
+      setSelectedId(null);
+      setMessages([]);
+      return;
+    }
 
     setSelectedId((current) => {
       if (
@@ -246,6 +246,13 @@ export function ConnectionGate() {
         qrPng={connection.qrPng}
         onRetry={restartConnection}
         onResetSession={() => restartConnection(true)}
+        dataTools={
+          <ExportCenter
+            conversations={conversations}
+            buttonLabel="Exportar datos guardados"
+            onCategoryChange={changeExportCategory}
+          />
+        }
       />
     );
   }

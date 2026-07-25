@@ -717,6 +717,19 @@ export function listConversationsByIds(ids: number[]): Conversation[] {
     .all(...ids) as Conversation[];
 }
 
+export function listExportableConversations(): Conversation[] {
+  return db
+    .prepare(
+      `
+      SELECT *
+      FROM conversations
+      WHERE export_category != 'excluded'
+      ORDER BY COALESCE(last_message_at, created_at) DESC, id DESC
+    `,
+    )
+    .all() as Conversation[];
+}
+
 export function getMessagesForExport(
   conversationIds: number[],
   options: { from?: number | null; to?: number | null } = {},
@@ -750,6 +763,24 @@ export function getMessagesForExport(
     `,
     )
     .all(...params) as ExportMessage[];
+}
+
+export function getAllMessagesForExport(): ExportMessage[] {
+  return db
+    .prepare(
+      `
+      SELECT
+        m.*,
+        c.phone AS conversation_phone,
+        c.name AS conversation_name,
+        c.export_category
+      FROM messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      WHERE c.export_category != 'excluded'
+      ORDER BY m.conversation_id ASC, m.created_at ASC, m.id ASC
+    `,
+    )
+    .all() as ExportMessage[];
 }
 
 export function getConnectionState(): ConnectionState {
