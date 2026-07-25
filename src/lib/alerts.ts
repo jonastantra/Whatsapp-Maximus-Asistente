@@ -1,5 +1,11 @@
-import type { WASocket } from "@whiskeysockets/baileys";
+import type { WASocket } from "baileys";
 import { botLog } from "./bot-log";
+import {
+  enqueueOutbox,
+  getConversationByAddress,
+  getOrCreateConversation,
+  insertMessage,
+} from "./db";
 
 const ownerPhone = process.env.OWNER_ALERT_PHONE;
 
@@ -274,7 +280,7 @@ export function shouldAlertOwner(text: string): boolean {
 }
 
 export async function notifyOwner(
-  sock: WASocket,
+  _sock: WASocket,
   customerJid: string,
   customerName: string | null | undefined,
   text: string,
@@ -311,10 +317,18 @@ export async function notifyOwner(
   ].filter(Boolean).join("\n");
 
   try {
-    await sock.sendMessage(toJid(ownerPhone), { text: message });
-    botLog("[bot] Aviso enviado al owner", { ownerPhone, customerJid });
+    const ownerJid = toJid(ownerPhone);
+    const conversation =
+      getConversationByAddress(ownerJid) ??
+      getOrCreateConversation(ownerJid, "Propietario");
+    const messageId = insertMessage(conversation.id, "assistant", message);
+    enqueueOutbox(conversation.id, conversation.phone, message, messageId);
+    botLog("[bot] Aviso encolado para el owner", {
+      ownerPhone,
+      customerJid,
+    });
   } catch (err) {
-    botLog("[bot] No se pudo avisar al owner", {
+    botLog("[bot] No se pudo encolar el aviso al owner", {
       error: String(err),
       ownerPhone,
       customerJid,

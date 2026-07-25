@@ -3,12 +3,22 @@
 import { CampaignManager } from "./CampaignManager";
 import { GlobalPauseToggle } from "./GlobalPauseToggle";
 import { PromotionEditor } from "./PromotionEditor";
+import { ExportCenter } from "./ExportCenter";
+import type {
+  ConversationListItem,
+  ExportCategory,
+} from "@/lib/db";
 
 interface DashboardHeaderProps {
   phone: string | null;
   aiPaused: boolean;
   onAiPausedChange: (paused: boolean) => Promise<void>;
   onDisconnect: () => Promise<void>;
+  conversations: ConversationListItem[];
+  onCategoryChange: (
+    conversationId: number,
+    category: ExportCategory,
+  ) => Promise<void>;
 }
 
 export function DashboardHeader({
@@ -16,6 +26,8 @@ export function DashboardHeader({
   aiPaused,
   onAiPausedChange,
   onDisconnect,
+  conversations,
+  onCategoryChange,
 }: DashboardHeaderProps) {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-stone-200 bg-white px-4">
@@ -34,6 +46,10 @@ export function DashboardHeader({
         />
         <CampaignManager />
         <PromotionEditor />
+        <ExportCenter
+          conversations={conversations}
+          onCategoryChange={onCategoryChange}
+        />
         <button
           type="button"
           onClick={() => {

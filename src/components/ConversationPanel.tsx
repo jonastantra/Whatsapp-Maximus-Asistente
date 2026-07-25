@@ -14,6 +14,7 @@ interface ConversationPanelProps {
   onSendHuman: (content: string) => Promise<void>;
   onDelete: () => Promise<void>;
   onContextChange: (enabled: boolean, notes: string) => Promise<void>;
+  onRetryMessage: (messageId: number) => Promise<void>;
 }
 
 export function ConversationPanel({
@@ -25,6 +26,7 @@ export function ConversationPanel({
   onSendHuman,
   onDelete,
   onContextChange,
+  onRetryMessage,
 }: ConversationPanelProps) {
   const [draft, setDraft] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
@@ -233,6 +235,9 @@ export function ConversationPanel({
               role={message.role}
               content={message.content}
               createdAt={message.created_at}
+              deliveryStatus={message.delivery_status}
+              deliveryError={message.delivery_error}
+              onRetry={() => onRetryMessage(message.id)}
             />
           ))
         )}

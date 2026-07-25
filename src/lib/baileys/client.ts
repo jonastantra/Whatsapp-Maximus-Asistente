@@ -7,23 +7,27 @@ import {
   makeWASocket,
   useMultiFileAuthState,
   type WASocket,
-} from "@whiskeysockets/baileys";
+} from "baileys";
 import pino from "pino";
 import qrcodeTerminal from "qrcode-terminal";
 import {
   finalizeCompletedCampaigns,
   getConnectionState,
   getDueCampaignRecipients,
+  getOutgoingMessageContentByWaId,
   getOrCreateConversation,
   getPendingOutbox,
   insertMessage,
   markCampaignRecipientFailed,
   markCampaignRecipientSent,
+  markOutboxFailed,
+  markOutboxSending,
   markOutboxSent,
   setConnectionState,
 } from "../db";
 import { botLog } from "../bot-log";
 import { handleIncomingMessage } from "./handler";
+import { phoneNumbersMatch } from "../whatsapp-identity";
 
 export interface BaileysHandle {
   sock: WASocket;
@@ -37,6 +41,7 @@ let handle: BaileysHandle | null = null;
 let reconnectTimer: NodeJS.Timeout | null = null;
 let outboxTimer: NodeJS.Timeout | null = null;
 let campaignTimer: NodeJS.Timeout | null = null;
+let outboxProcessing = false;
 let loggedOutReconnectAttempts = 0;
 const seenMessageIds = new Set<string>();
 const maxLoggedOutReconnectAttempts = 0;
@@ -104,19 +109,68 @@ async function resolveWhatsappJid(sock: WASocket, phone: string): Promise<string
   throw new Error(`El numero no aparece activo en WhatsApp: ${phone}`);
 }
 
-async function processOutbox(sock: WASocket): Promise<void> {
-  const pending = getPendingOutbox(20);
+class DeliveryTimeoutError extends Error {
+  constructor() {
+    super(
+      "WhatsApp no confirmó el envío en 30 segundos; no se reintenta automáticamente para evitar duplicados.",
+    );
+    this.name = "DeliveryTimeoutError";
+  }
+}
 
-  for (const item of pending) {
-    try {
-      await sock.sendMessage(jidFromPhone(item.phone), { text: item.content });
-      markOutboxSent(item.id);
-      botLog(`[bot] → Mensaje humano enviado a ${item.phone}`);
-    } catch (err) {
-      botLog(`[bot] No se pudo enviar outbox ${item.id}`, {
-        error: String(err),
-      });
+async function withDeliveryTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new DeliveryTimeoutError()), 30000);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function processOutbox(sock: WASocket): Promise<void> {
+  if (outboxProcessing) return;
+  outboxProcessing = true;
+
+  try {
+    const pending = getPendingOutbox(20);
+
+    for (const item of pending) {
+      if (!markOutboxSending(item.id)) continue;
+
+      try {
+        const sent = await withDeliveryTimeout(
+          sock.sendMessage(jidFromPhone(item.phone), { text: item.content }),
+        );
+        markOutboxSent(item.id, sent?.key?.id);
+        botLog(`[bot] → Mensaje confirmado para ${item.phone}`, {
+          outboxId: item.id,
+          messageId: sent?.key?.id,
+          attempt: item.attempts + 1,
+        });
+      } catch (err) {
+        const isTimeout = err instanceof DeliveryTimeoutError;
+        const attempts = item.attempts + 1;
+        const shouldRetry = !isTimeout && attempts < 3;
+        const delaySeconds = Math.min(60, 5 * 2 ** Math.max(0, attempts - 1));
+        markOutboxFailed(item.id, String(err), {
+          retry: shouldRetry,
+          delaySeconds: shouldRetry ? delaySeconds : 0,
+        });
+        botLog(`[bot] No se pudo enviar outbox ${item.id}`, {
+          error: String(err),
+          attempt: attempts,
+          retryInSeconds: shouldRetry ? delaySeconds : null,
+          uncertainDelivery: isTimeout,
+        });
+      }
     }
+  } finally {
+    outboxProcessing = false;
   }
 }
 
@@ -263,6 +317,11 @@ export async function startBaileys(): Promise<BaileysHandle> {
     browser: Browsers.macOS("Desktop"),
     markOnlineOnConnect: false,
     syncFullHistory: false,
+    getMessage: async (key) => {
+      if (!key.id) return undefined;
+      const content = getOutgoingMessageContentByWaId(key.id);
+      return content ? { conversation: content } : undefined;
+    },
   });
 
   handle = {
@@ -297,6 +356,7 @@ export async function startBaileys(): Promise<BaileysHandle> {
       messages: messages.map((msg) => ({
         id: msg.key.id,
         remoteJid: msg.key.remoteJid,
+        remoteJidAlt: msg.key.remoteJidAlt,
         fromMe: msg.key.fromMe,
         messageKeys: msg.message ? Object.keys(msg.message) : [],
       })),
@@ -346,6 +406,17 @@ export async function startBaileys(): Promise<BaileysHandle> {
         phone,
       });
       botLog(`[bot] Conectado${phone ? ` como ${phone}` : ""}`);
+      const expectedPhone = process.env.MANAGED_WHATSAPP_PHONE;
+      if (
+        expectedPhone &&
+        phone &&
+        !phoneNumbersMatch(phone, expectedPhone)
+      ) {
+        botLog("[bot] ADVERTENCIA: la sesión no corresponde al número administrado", {
+          connectedPhone: phone,
+          expectedPhone,
+        });
+      }
 
       clearOutboxTimer();
       clearCampaignTimer();

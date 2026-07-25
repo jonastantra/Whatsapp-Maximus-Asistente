@@ -68,11 +68,63 @@ Configura en EasyPanel:
 
 ```env
 OWNER_ALERT_PHONE=5215585747455
+MANAGED_WHATSAPP_PHONE=52155XXXXXXXX
 PAYMENT_INFO_TEXT=Bancomer: TITULAR..., CLABE..., tarjeta/cuenta... Banamex: TITULAR..., CLABE..., tarjeta/cuenta...
 PAYMENT_EXTRA_INSTRUCTIONS=Bancomer es la cuenta principal. Pedir comprobante despues de pagar.
 ```
 
 Cuando el cliente pida cuenta, depósito, transferencia, CLABE, tarjeta, comprobante o atención humana, el bot manda aviso al WhatsApp configurado.
+
+`OWNER_ALERT_PHONE` también autoriza los comandos `/pausar`, `/activar`,
+`/humano ID`, `/ia ID` y `/responder ID texto`. La autorización revisa tanto
+el identificador LID como el número alternativo que entrega WhatsApp; por eso
+un mensaje desde el teléfono personal autorizado hacia el número administrado
+no se confunde con un mensaje propio ni se descarta. `MANAGED_WHATSAPP_PHONE` es una
+comprobación diagnóstica: si por accidente se vincula otra cuenta, el bot lo
+deja explícito en `data/bot-events.log`.
+
+## Entrega fiable de mensajes
+
+Todos los textos salientes del dashboard y de la IA pasan por una cola
+persistente. El dashboard muestra:
+
+- `Pendiente de confirmación` mientras Baileys procesa el mensaje.
+- `Enviado` cuando WhatsApp devuelve un identificador de mensaje.
+- `No confirmado` cuando falla después de reintentos o pasan 30 segundos sin
+  respuesta.
+
+Los errores normales se reintentan hasta tres veces con espera creciente. Un
+timeout no se reintenta automáticamente porque el servidor podría haber
+aceptado el mensaje aunque no haya contestado; así se evitan duplicados. En ese
+caso usa `Reintentar` manualmente después de revisar el teléfono.
+
+La integración usa `baileys` 7, que incluye el manejo actual de LID/PN y
+mejoras de sesiones y reenvío. La sesión existente de `./auth` se conserva. Si
+WhatsApp la invalida, usa `Reiniciar conexión`; restablece la sesión solo como
+último recurso porque obliga a escanear un QR nuevo.
+
+## Exportar contactos y conversaciones
+
+El botón `Exportar` abre un selector privado:
+
+1. Busca y marca únicamente los chats que quieres incluir.
+2. Opcionalmente clasifícalos como `Negocio`, `Personal`, `No exportar` o
+   déjalos `Sin clasificar`. La clasificación solo ayuda a filtrar; nunca
+   excluye automáticamente el teléfono personal ni otro chat.
+3. Descarga:
+   - `Contactos para Google`: CSV con columnas compatibles con Google
+     Contacts.
+   - `Exportar chats`: JSONL estructurado o CSV ligero, con filtro de fechas.
+
+El nombre disponible es el nombre mostrado por WhatsApp (`pushName`), no una
+prueba de que el contacto esté guardado en la agenda. El CSV lo dice
+explícitamente y deja vacío el teléfono si WhatsApp solo expuso un LID, en vez
+de inventar datos.
+
+El resumen opcional de JSONL es determinista y local: cuenta mensajes, separa
+roles, extrae términos frecuentes y agrega un extracto reciente. No llama a
+OpenRouter ni envía conversaciones a ninguna IA. El archivo resultante sí se
+puede entregar manualmente a otra herramienta bajo decisión del usuario.
 
 ## Personalizar el prompt
 
@@ -120,6 +172,19 @@ Verifica que se esté usando `Browsers.macOS("Desktop")`. Este proyecto ya lo ha
 
 El modelo gratuito saturó cuota. Cambia `OPENROUTER_MODEL` a `openai/gpt-4o-mini`.
 
+### Un mensaje muestra “Esperando este mensaje” o no dispara una regla
+
+1. Confirma en `data/bot-events.log` que el evento tenga `remoteJid` y
+   `remoteJidAlt`. Para el teléfono personal autorizado, basta que cualquiera
+   de los dos corresponda a `OWNER_ALERT_PHONE`.
+2. Confirma que `fromMe` sea `false`. Dos cuentas distintas —teléfono personal
+   y cuenta administrada— deben verse como remitente externo aunque ambas sean
+   tuyas.
+3. Revisa que el dashboard muestre `Enviado`. Si queda `No confirmado`, revisa
+   el teléfono antes de pulsar `Reintentar`.
+4. Si la cuenta usa coexistencia con WhatsApp Cloud API, prueba sin
+   coexistencia: esa modalidad sigue siendo experimental en Baileys.
+
 ### Procesos zombies en Windows
 
 Si `Ctrl+C` no mata hijos de `tsx`, revisa procesos con:
@@ -138,6 +203,5 @@ taskkill /PID 12345 /F
 
 - Soporte de imágenes salientes.
 - Tools/function calling con OpenRouter.
-- Auto cambio a `HUMAN` cuando el bot derive a asesor humano.
 - WebSocket o SSE para reemplazar polling.
 - Autenticación integrada en Next.js.

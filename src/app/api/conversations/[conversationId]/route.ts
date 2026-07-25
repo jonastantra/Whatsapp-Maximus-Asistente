@@ -3,6 +3,8 @@ import {
   deleteConversation,
   getConversationById,
   setConversationContext,
+  setConversationExportCategory,
+  type ExportCategory,
 } from "@/lib/db";
 
 interface Ctx {
@@ -40,13 +42,34 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   const body = (await req.json()) as {
     contextEnabled?: unknown;
     contextNotes?: unknown;
+    exportCategory?: unknown;
   };
 
-  const conversation = setConversationContext(
-    id,
-    body.contextEnabled === true,
-    typeof body.contextNotes === "string" ? body.contextNotes : "",
-  );
+  const allowedCategories = new Set<ExportCategory>([
+    "unclassified",
+    "business",
+    "personal",
+    "excluded",
+  ]);
+  let conversation =
+    typeof body.contextEnabled === "boolean" ||
+    typeof body.contextNotes === "string"
+      ? setConversationContext(
+          id,
+          body.contextEnabled === true,
+          typeof body.contextNotes === "string" ? body.contextNotes : "",
+        )
+      : getConversationById(id);
+
+  if (
+    typeof body.exportCategory === "string" &&
+    allowedCategories.has(body.exportCategory as ExportCategory)
+  ) {
+    conversation = setConversationExportCategory(
+      id,
+      body.exportCategory as ExportCategory,
+    );
+  }
 
   if (!conversation) {
     return NextResponse.json(

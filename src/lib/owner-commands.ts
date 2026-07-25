@@ -1,49 +1,63 @@
-import type { WASocket, WAMessage } from "@whiskeysockets/baileys";
+import type { WASocket, WAMessage } from "baileys";
 import {
+  enqueueOutbox,
+  getConversationByAddress,
   getConversationById,
+  getOrCreateConversation,
   insertMessage,
   setAiPaused,
   setMode,
+  type Conversation,
 } from "./db";
 import { botLog } from "./bot-log";
+import { isAuthorizedAddress } from "./whatsapp-identity";
 
 const ownerPhone = process.env.OWNER_ALERT_PHONE?.replace(/\D/g, "") ?? "";
 
-function toJid(phoneOrJid: string): string {
-  if (phoneOrJid.includes("@")) return phoneOrJid;
-  return `${phoneOrJid.replace(/\D/g, "")}@s.whatsapp.net`;
-}
-
-function jidToDigits(jid: string): string {
-  return jid.split("@")[0]?.split(":")[0]?.replace(/\D/g, "") ?? "";
-}
-
-function isOwnerJid(jid: string): boolean {
-  if (!ownerPhone) return false;
-  const digits = jidToDigits(jid);
-  return digits === ownerPhone || digits.endsWith(ownerPhone.slice(-10));
-}
-
 async function replyToOwner(
-  sock: WASocket,
-  ownerJid: string,
+  conversation: Conversation,
   text: string,
 ): Promise<void> {
-  await sock.sendMessage(ownerJid, { text });
+  const messageId = insertMessage(conversation.id, "assistant", text);
+  enqueueOutbox(
+    conversation.id,
+    conversation.phone,
+    text,
+    messageId,
+  );
 }
 
 export async function tryHandleOwnerCommand(
-  sock: WASocket,
+  _sock: WASocket,
   msg: WAMessage,
   text: string,
 ): Promise<boolean> {
   const ownerJid = msg.key.remoteJid;
   if (!ownerJid || !text.trim().startsWith("/")) return false;
 
-  if (!isOwnerJid(ownerJid)) {
-    botLog("[bot] Comando ignorado: remitente no autorizado", { ownerJid });
+  if (
+    !isAuthorizedAddress(
+      {
+        remoteJid: ownerJid,
+        remoteJidAlt: msg.key.remoteJidAlt,
+      },
+      ownerPhone,
+    )
+  ) {
+    botLog("[bot] Comando ignorado: remitente no autorizado", {
+      ownerJid,
+      remoteJidAlt: msg.key.remoteJidAlt,
+    });
     return false;
   }
+
+  const ownerConversation =
+    getConversationByAddress(ownerJid) ??
+    (msg.key.remoteJidAlt
+      ? getConversationByAddress(msg.key.remoteJidAlt)
+      : null) ??
+    getOrCreateConversation(ownerJid, msg.pushName, msg.key.remoteJidAlt);
+  insertMessage(ownerConversation.id, "user", text);
 
   const trimmed = text.trim();
   const [commandRaw, idRaw, ...rest] = trimmed.split(/\s+/);
@@ -51,21 +65,20 @@ export async function tryHandleOwnerCommand(
 
   if (command === "/pausar") {
     setAiPaused(true);
-    await replyToOwner(sock, ownerJid, "IA pausada globalmente.");
+    await replyToOwner(ownerConversation, "IA pausada globalmente.");
     return true;
   }
 
   if (command === "/activar") {
     setAiPaused(false);
-    await replyToOwner(sock, ownerJid, "IA activada globalmente.");
+    await replyToOwner(ownerConversation, "IA activada globalmente.");
     return true;
   }
 
   const conversationId = Number(idRaw);
   if (!Number.isInteger(conversationId) || conversationId <= 0) {
     await replyToOwner(
-      sock,
-      ownerJid,
+      ownerConversation,
       "Comando invalido. Usa /responder ID mensaje, /humano ID o /ia ID.",
     );
     return true;
@@ -73,39 +86,49 @@ export async function tryHandleOwnerCommand(
 
   const conversation = getConversationById(conversationId);
   if (!conversation) {
-    await replyToOwner(sock, ownerJid, `No encontre conversacion ${conversationId}.`);
+    await replyToOwner(ownerConversation, `No encontre conversacion ${conversationId}.`);
     return true;
   }
 
   if (command === "/humano") {
     setMode(conversationId, "HUMAN");
-    await replyToOwner(sock, ownerJid, `Conversacion ${conversationId} en HUMAN.`);
+    await replyToOwner(ownerConversation, `Conversacion ${conversationId} en HUMAN.`);
     return true;
   }
 
   if (command === "/ia") {
     setMode(conversationId, "AI");
-    await replyToOwner(sock, ownerJid, `Conversacion ${conversationId} en AI.`);
+    await replyToOwner(ownerConversation, `Conversacion ${conversationId} en AI.`);
     return true;
   }
 
   if (command === "/responder") {
     const content = rest.join(" ").trim();
     if (!content) {
-      await replyToOwner(sock, ownerJid, "Escribe el mensaje: /responder ID texto");
+      await replyToOwner(
+        ownerConversation,
+        "Escribe el mensaje: /responder ID texto",
+      );
       return true;
     }
 
-    await sock.sendMessage(toJid(conversation.phone), { text: content });
-    insertMessage(conversationId, "human", content);
+    const messageId = insertMessage(conversationId, "human", content);
+    enqueueOutbox(
+      conversationId,
+      conversation.phone,
+      content,
+      messageId,
+    );
     setMode(conversationId, "HUMAN");
-    await replyToOwner(sock, ownerJid, `Enviado a conversacion ${conversationId}.`);
+    await replyToOwner(
+      ownerConversation,
+      `Respuesta encolada para conversacion ${conversationId}.`,
+    );
     return true;
   }
 
   await replyToOwner(
-    sock,
-    ownerJid,
+    ownerConversation,
     "Comando no reconocido. Usa /responder, /humano, /ia, /pausar o /activar.",
   );
   return true;

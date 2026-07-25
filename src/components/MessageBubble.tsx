@@ -1,11 +1,14 @@
 "use client";
 
-import type { MessageRole } from "@/lib/db";
+import type { DeliveryStatus, MessageRole } from "@/lib/db";
 
 interface MessageBubbleProps {
   role: MessageRole;
   content: string;
   createdAt: number;
+  deliveryStatus?: DeliveryStatus | null;
+  deliveryError?: string | null;
+  onRetry?: () => Promise<void>;
 }
 
 function formatTime(timestamp: number): string {
@@ -15,7 +18,14 @@ function formatTime(timestamp: number): string {
   }).format(new Date(timestamp * 1000));
 }
 
-export function MessageBubble({ role, content, createdAt }: MessageBubbleProps) {
+export function MessageBubble({
+  role,
+  content,
+  createdAt,
+  deliveryStatus,
+  deliveryError,
+  onRetry,
+}: MessageBubbleProps) {
   const isUser = role === "user";
   const label =
     role === "user" ? "Cliente" : role === "assistant" ? "IA" : "Humano";
@@ -36,6 +46,25 @@ export function MessageBubble({ role, content, createdAt }: MessageBubbleProps) 
         <p className="whitespace-pre-wrap break-words text-sm leading-5">
           {content}
         </p>
+        {deliveryStatus && role !== "user" ? (
+          <div className="mt-1 text-[11px] opacity-85">
+            {deliveryStatus === "pending" || deliveryStatus === "sending"
+              ? "Pendiente de confirmación"
+              : deliveryStatus === "sent"
+                ? "Enviado"
+                : "No confirmado"}
+            {deliveryStatus === "failed" && onRetry ? (
+              <button
+                type="button"
+                title={deliveryError || "No se pudo confirmar el envío"}
+                onClick={() => void onRetry()}
+                className="ml-2 underline"
+              >
+                Reintentar
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

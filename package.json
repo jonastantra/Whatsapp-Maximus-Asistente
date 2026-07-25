@@ -11,12 +11,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "test": "tsx --test src/**/*.test.ts",
     "start:bot": "tsx scripts/start-bot.ts",
     "start:all": "concurrently --kill-others --names BOT,WEB --prefix-colors yellow,cyan \"npm run start:bot\" \"npm run start\""
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.0",
-    "@whiskeysockets/baileys": "^6.17.16",
+    "baileys": "7.0.0-rc13",
     "better-sqlite3": "^12.10.0",
     "concurrently": "^9.2.1",
     "eslint": "^9.39.4",

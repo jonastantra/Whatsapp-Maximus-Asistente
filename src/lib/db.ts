@@ -4,7 +4,13 @@ import Database from "better-sqlite3";
 import { CATALOG_SEED_KEY, DEFAULT_CATALOG } from "./catalog-seed";
 
 export type ConversationMode = "AI" | "HUMAN";
+export type ExportCategory =
+  | "unclassified"
+  | "business"
+  | "personal"
+  | "excluded";
 export type MessageRole = "user" | "assistant" | "human";
+export type DeliveryStatus = "pending" | "sending" | "sent" | "failed";
 export type ConnectionStatus =
   | "disconnected"
   | "qr"
@@ -18,6 +24,8 @@ export interface Conversation {
   mode: ConversationMode;
   context_enabled: 0 | 1;
   context_notes: string | null;
+  alternate_jid: string | null;
+  export_category: ExportCategory;
   last_message_at: number | null;
   created_at: number;
 }
@@ -32,6 +40,14 @@ export interface Message {
   role: MessageRole;
   content: string;
   created_at: number;
+  delivery_status?: DeliveryStatus | null;
+  delivery_error?: string | null;
+}
+
+export interface ExportMessage extends Message {
+  conversation_phone: string;
+  conversation_name: string | null;
+  export_category: ExportCategory;
 }
 
 export interface ConnectionState {
@@ -47,7 +63,13 @@ export interface OutboxItem {
   conversation_id: number;
   phone: string;
   content: string;
-  sent: 0 | 1;
+  message_id: number | null;
+  status: DeliveryStatus;
+  attempts: number;
+  next_attempt_at: number;
+  last_error: string | null;
+  wa_message_id: string | null;
+  sent_at: number | null;
   created_at: number;
 }
 
@@ -171,6 +193,13 @@ CREATE TABLE IF NOT EXISTS outbox (
   phone TEXT NOT NULL,
   content TEXT NOT NULL,
   sent INTEGER NOT NULL DEFAULT 0,
+  message_id INTEGER,
+  status TEXT CHECK(status IN ('pending','sending','sent','failed')) NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  last_error TEXT,
+  wa_message_id TEXT,
+  sent_at INTEGER,
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
@@ -278,10 +307,79 @@ ensureColumn(
 );
 
 ensureColumn(
+  "conversations",
+  "alternate_jid",
+  "ALTER TABLE conversations ADD COLUMN alternate_jid TEXT",
+);
+
+ensureColumn(
+  "conversations",
+  "export_category",
+  "ALTER TABLE conversations ADD COLUMN export_category TEXT NOT NULL DEFAULT 'unclassified'",
+);
+
+ensureColumn(
   "campaign_recipients",
   "personalized_message",
   "ALTER TABLE campaign_recipients ADD COLUMN personalized_message TEXT",
 );
+
+ensureColumn(
+  "outbox",
+  "message_id",
+  "ALTER TABLE outbox ADD COLUMN message_id INTEGER",
+);
+
+ensureColumn(
+  "outbox",
+  "status",
+  "ALTER TABLE outbox ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'",
+);
+
+ensureColumn(
+  "outbox",
+  "attempts",
+  "ALTER TABLE outbox ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0",
+);
+
+ensureColumn(
+  "outbox",
+  "next_attempt_at",
+  "ALTER TABLE outbox ADD COLUMN next_attempt_at INTEGER NOT NULL DEFAULT 0",
+);
+
+ensureColumn(
+  "outbox",
+  "last_error",
+  "ALTER TABLE outbox ADD COLUMN last_error TEXT",
+);
+
+ensureColumn(
+  "outbox",
+  "wa_message_id",
+  "ALTER TABLE outbox ADD COLUMN wa_message_id TEXT",
+);
+
+ensureColumn(
+  "outbox",
+  "sent_at",
+  "ALTER TABLE outbox ADD COLUMN sent_at INTEGER",
+);
+
+db.exec(`
+  UPDATE outbox
+  SET status = CASE WHEN sent = 1 THEN 'sent' ELSE 'pending' END,
+      next_attempt_at = CASE
+        WHEN next_attempt_at = 0 THEN created_at
+        ELSE next_attempt_at
+      END
+  WHERE status IS NULL
+     OR (status = 'pending' AND sent = 1)
+     OR next_attempt_at = 0;
+
+  CREATE INDEX IF NOT EXISTS idx_outbox_delivery
+    ON outbox(status, next_attempt_at, created_at);
+`);
 
 const kirklandRematePromotion = `
 Promocion especial de remate de stock Kirkland liquido 5%.
@@ -410,9 +508,64 @@ const deleteConversationTx = db.transaction((id: number) => {
 export function getOrCreateConversation(
   phone: string,
   name?: string | null,
+  alternateJid?: string | null,
 ): Conversation {
+  const existing = db
+    .prepare(
+      `
+      SELECT *
+      FROM conversations
+      WHERE phone IN (?, ?)
+         OR alternate_jid IN (?, ?)
+      ORDER BY CASE WHEN phone = ? THEN 0 ELSE 1 END, id ASC
+      LIMIT 1
+    `,
+    )
+    .get(
+      phone,
+      alternateJid ?? phone,
+      phone,
+      alternateJid ?? phone,
+      phone,
+    ) as Conversation | undefined;
+
+  if (existing) {
+    const otherJid =
+      existing.phone === phone ? alternateJid : phone;
+    db.prepare(
+      `
+      UPDATE conversations
+      SET name = COALESCE(?, name),
+          alternate_jid = COALESCE(?, alternate_jid)
+      WHERE id = ?
+    `,
+    ).run(name ?? null, otherJid ?? null, existing.id);
+    return getConversationById(existing.id) as Conversation;
+  }
+
   insertConversationStmt.run(phone, name ?? null);
+  if (alternateJid && alternateJid !== phone) {
+    db.prepare(
+      "UPDATE conversations SET alternate_jid = ? WHERE phone = ?",
+    ).run(alternateJid, phone);
+  }
   return selectConversationByPhone.get(phone) as Conversation;
+}
+
+export function getConversationByAddress(jid: string): Conversation | null {
+  return (
+    (db
+      .prepare(
+        `
+        SELECT *
+        FROM conversations
+        WHERE phone = ? OR alternate_jid = ?
+        ORDER BY id ASC
+        LIMIT 1
+      `,
+      )
+      .get(jid, jid) as Conversation | undefined) ?? null
+  );
 }
 
 export function getConversationById(id: number): Conversation | null {
@@ -460,10 +613,14 @@ export function getMessages(conversationId: number, limit = 50): Message[] {
   const rows = db
     .prepare(
       `
-      SELECT *
-      FROM messages
-      WHERE conversation_id = ?
-      ORDER BY created_at DESC, id DESC
+      SELECT
+        m.*,
+        o.status AS delivery_status,
+        o.last_error AS delivery_error
+      FROM messages m
+      LEFT JOIN outbox o ON o.message_id = m.id
+      WHERE m.conversation_id = ?
+      ORDER BY m.created_at DESC, m.id DESC
       LIMIT ?
     `,
     )
@@ -515,6 +672,16 @@ export function setConversationContext(
   return getConversationById(conversationId);
 }
 
+export function setConversationExportCategory(
+  conversationId: number,
+  category: ExportCategory,
+): Conversation | null {
+  db.prepare(
+    "UPDATE conversations SET export_category = ? WHERE id = ?",
+  ).run(category, conversationId);
+  return getConversationById(conversationId);
+}
+
 export function listConversations(): ConversationListItem[] {
   return db
     .prepare(
@@ -533,6 +700,56 @@ export function listConversations(): ConversationListItem[] {
     `,
     )
     .all() as ConversationListItem[];
+}
+
+export function listConversationsByIds(ids: number[]): Conversation[] {
+  if (ids.length === 0) return [];
+  const placeholders = ids.map(() => "?").join(", ");
+  return db
+    .prepare(
+      `
+      SELECT *
+      FROM conversations
+      WHERE id IN (${placeholders})
+      ORDER BY COALESCE(last_message_at, created_at) DESC, id DESC
+    `,
+    )
+    .all(...ids) as Conversation[];
+}
+
+export function getMessagesForExport(
+  conversationIds: number[],
+  options: { from?: number | null; to?: number | null } = {},
+): ExportMessage[] {
+  if (conversationIds.length === 0) return [];
+  const placeholders = conversationIds.map(() => "?").join(", ");
+  const clauses = [`m.conversation_id IN (${placeholders})`];
+  const params: Array<number> = [...conversationIds];
+
+  if (options.from) {
+    clauses.push("m.created_at >= ?");
+    params.push(options.from);
+  }
+  if (options.to) {
+    clauses.push("m.created_at <= ?");
+    params.push(options.to);
+  }
+
+  return db
+    .prepare(
+      `
+      SELECT
+        m.*,
+        c.phone AS conversation_phone,
+        c.name AS conversation_name,
+        c.export_category
+      FROM messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      WHERE ${clauses.join(" AND ")}
+      ORDER BY m.conversation_id ASC, m.created_at ASC, m.id ASC
+    `,
+    )
+    .all(...params) as ExportMessage[];
 }
 
 export function getConnectionState(): ConnectionState {
@@ -577,26 +794,39 @@ export function enqueueOutbox(
   conversationId: number,
   phone: string,
   content: string,
+  messageId?: number | null,
 ): number {
   const result = db
     .prepare(
       `
-      INSERT INTO outbox (conversation_id, phone, content)
-      VALUES (?, ?, ?)
+      INSERT INTO outbox
+        (conversation_id, phone, content, message_id, status, next_attempt_at)
+      VALUES (?, ?, ?, ?, 'pending', unixepoch())
     `,
     )
-    .run(conversationId, phone, content);
+    .run(conversationId, phone, content, messageId ?? null);
 
   return Number(result.lastInsertRowid);
 }
 
 export function getPendingOutbox(limit = 20): OutboxItem[] {
+  db.prepare(
+    `
+    UPDATE outbox
+    SET status = 'pending',
+        last_error = COALESCE(last_error, 'Envío interrumpido por reinicio')
+    WHERE status = 'sending'
+      AND next_attempt_at <= unixepoch() - 120
+  `,
+  ).run();
+
   return db
     .prepare(
       `
       SELECT *
       FROM outbox
-      WHERE sent = 0
+      WHERE status = 'pending'
+        AND next_attempt_at <= unixepoch()
       ORDER BY created_at ASC, id ASC
       LIMIT ?
     `,
@@ -604,8 +834,75 @@ export function getPendingOutbox(limit = 20): OutboxItem[] {
     .all(limit) as OutboxItem[];
 }
 
-export function markOutboxSent(id: number): void {
-  db.prepare("UPDATE outbox SET sent = 1 WHERE id = ?").run(id);
+export function markOutboxSending(id: number): boolean {
+  const result = db.prepare(
+    `
+    UPDATE outbox
+    SET status = 'sending',
+        attempts = attempts + 1,
+        next_attempt_at = unixepoch()
+    WHERE id = ? AND status = 'pending'
+  `,
+  ).run(id);
+  return result.changes === 1;
+}
+
+export function markOutboxSent(id: number, waMessageId?: string | null): void {
+  db.prepare(
+    `
+    UPDATE outbox
+    SET sent = 1,
+        status = 'sent',
+        last_error = NULL,
+        wa_message_id = ?,
+        sent_at = unixepoch()
+    WHERE id = ?
+  `,
+  ).run(waMessageId ?? null, id);
+}
+
+export function markOutboxFailed(
+  id: number,
+  error: string,
+  options: { retry?: boolean; delaySeconds?: number } = {},
+): void {
+  db.prepare(
+    `
+    UPDATE outbox
+    SET status = ?,
+        last_error = ?,
+        next_attempt_at = unixepoch() + ?
+    WHERE id = ?
+  `,
+  ).run(
+    options.retry ? "pending" : "failed",
+    error.slice(0, 1000),
+    options.delaySeconds ?? 0,
+    id,
+  );
+}
+
+export function retryOutboxForMessage(messageId: number): boolean {
+  const result = db.prepare(
+    `
+    UPDATE outbox
+    SET status = 'pending',
+        attempts = 0,
+        last_error = NULL,
+        next_attempt_at = unixepoch()
+    WHERE message_id = ? AND status = 'failed'
+  `,
+  ).run(messageId);
+  return result.changes === 1;
+}
+
+export function getOutgoingMessageContentByWaId(
+  waMessageId: string,
+): string | null {
+  const row = db.prepare(
+    "SELECT content FROM outbox WHERE wa_message_id = ? LIMIT 1",
+  ).get(waMessageId) as { content: string } | undefined;
+  return row?.content ?? null;
 }
 
 export function deleteConversation(id: number): void {

@@ -5,6 +5,7 @@ import type {
   ConnectionStatus,
   ConversationListItem,
   ConversationMode,
+  ExportCategory,
   Message,
 } from "@/lib/db";
 import { ConversationList } from "./ConversationList";
@@ -196,6 +197,27 @@ export function ConnectionGate() {
     await refresh();
   }
 
+  async function changeExportCategory(
+    conversationId: number,
+    exportCategory: ExportCategory,
+  ) {
+    const res = await fetch(`/api/conversations/${conversationId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ exportCategory }),
+    });
+    if (res.ok) await refresh();
+  }
+
+  async function retryMessage(messageId: number) {
+    const res = await fetch("/api/outbox/retry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId }),
+    });
+    if (res.ok && selectedId) await loadMessages(selectedId);
+  }
+
   async function restartConnection(resetSession = false) {
     await fetch("/api/connection/restart", {
       method: "POST",
@@ -235,6 +257,8 @@ export function ConnectionGate() {
         aiPaused={aiPaused}
         onAiPausedChange={changeAiPaused}
         onDisconnect={restartConnection}
+        conversations={conversations}
+        onCategoryChange={changeExportCategory}
       />
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <ConversationList
@@ -251,6 +275,7 @@ export function ConnectionGate() {
           onSendHuman={sendHuman}
           onDelete={deleteSelected}
           onContextChange={changeConversationContext}
+          onRetryMessage={retryMessage}
         />
       </div>
     </main>

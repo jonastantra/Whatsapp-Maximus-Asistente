@@ -56,7 +56,12 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   }
 
   const messageId = insertMessage(id, "human", content);
-  enqueueOutbox(id, conversation.phone, content);
+  enqueueOutbox(
+    id,
+    conversation.phone,
+    content,
+    messageId,
+  );
 
   return NextResponse.json({ ok: true, messageId });
 }

@@ -1,5 +1,6 @@
-import type { WASocket, WAMessage } from "@whiskeysockets/baileys";
+import type { WASocket, WAMessage } from "baileys";
 import {
+  enqueueOutbox,
   getBotSettings,
   getConversationById,
   getOrCreateConversation,
@@ -12,6 +13,9 @@ import { botLog } from "../bot-log";
 import { generateReply } from "../openrouter";
 import { getHumanHandoff, getOwnerAlertReason, notifyOwner } from "../alerts";
 import { tryHandleOwnerCommand } from "../owner-commands";
+import {
+  alternateJid,
+} from "../whatsapp-identity";
 
 function extractText(msg: WAMessage): string | null {
   const message =
@@ -74,14 +78,22 @@ export async function handleIncomingMessage(
     return;
   }
 
+  const otherJid = alternateJid({
+    remoteJid,
+    remoteJidAlt: msg.key.remoteJidAlt,
+  });
   const phone = extractPhone(remoteJid);
-  botLog(`[bot] ← Mensaje de ${phone}: "${text}"`);
+  botLog(`[bot] ← Mensaje de ${phone}: "${text}"`, {
+    remoteJid,
+    remoteJidAlt: msg.key.remoteJidAlt,
+    fromMe: msg.key.fromMe,
+  });
 
   if (await tryHandleOwnerCommand(sock, msg, text)) {
     return;
   }
 
-  const conversation = getOrCreateConversation(phone, msg.pushName);
+  const conversation = getOrCreateConversation(phone, msg.pushName, otherJid);
 
   if (msg.key.fromMe) {
     const alreadySaved = hasRecentMessageWithContent(
@@ -105,8 +117,17 @@ export async function handleIncomingMessage(
 
   const handoff = getHumanHandoff(text);
   if (handoff) {
-    insertMessage(conversation.id, "assistant", handoff.reply);
-    await sock.sendMessage(remoteJid, { text: handoff.reply });
+    const messageId = insertMessage(
+      conversation.id,
+      "assistant",
+      handoff.reply,
+    );
+    enqueueOutbox(
+      conversation.id,
+      remoteJid,
+      handoff.reply,
+      messageId,
+    );
     setMode(conversation.id, "HUMAN");
     void notifyOwner(
       sock,
@@ -151,7 +172,7 @@ export async function handleIncomingMessage(
   const reply = await generateReply(history, fresh);
   botLog(`[bot] LLM respondió en ${Date.now() - startedAt}ms`);
 
-  insertMessage(conversation.id, "assistant", reply);
-  await sock.sendMessage(remoteJid, { text: reply });
-  botLog(`[bot] → Enviado a ${phone}`);
+  const messageId = insertMessage(conversation.id, "assistant", reply);
+  enqueueOutbox(conversation.id, remoteJid, reply, messageId);
+  botLog(`[bot] → Respuesta encolada para ${phone}`);
 }
