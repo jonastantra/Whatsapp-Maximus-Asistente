@@ -2,6 +2,7 @@
 
 import { FormEvent, UIEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { ConversationListItem, ConversationMode, Message } from "@/lib/db";
+import { AI_AUTO_REACTIVATION_DAYS } from "@/lib/conversation-policy";
 import { MessageBubble } from "./MessageBubble";
 import { ModeToggle } from "./ModeToggle";
 
@@ -128,6 +129,12 @@ export function ConversationPanel({
           {aiPaused ? (
             <p className="mt-1 text-xs font-medium text-amber-700">
               IA pausada globalmente. Puedes responder manualmente.
+            </p>
+          ) : null}
+          {!aiPaused && conversation.mode === "HUMAN" ? (
+            <p className="mt-1 text-xs text-stone-500">
+              Puedes reactivar la IA ahora. Si el cliente vuelve después de{" "}
+              {AI_AUTO_REACTIVATION_DAYS} días sin actividad, se reactivará sola.
             </p>
           ) : null}
         </div>

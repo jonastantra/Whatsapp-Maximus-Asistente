@@ -48,6 +48,12 @@ Cuando escanees el QR, la sesión se guarda en `./auth/`. En reinicios posterior
 - `IA`: el bot responde automáticamente con el historial reciente y el prompt del sistema.
 - `HUMAN`: el bot solo guarda mensajes entrantes. El dashboard habilita el input para responder manualmente.
 
+En modo `HUMAN`, el botón `Reactivar IA` devuelve el chat a respuestas automáticas.
+Además, si pasan 15 días sin actividad y el cliente vuelve a escribir, el chat se
+reactiva automáticamente en modo `IA`. Si el nuevo mensaje requiere atención
+humana (por ejemplo, comprobante, visita o tema de salud), las reglas de
+derivación siguen teniendo prioridad.
+
 Los mensajes manuales se guardan como `human`, se encolan en SQLite y el proceso bot los envía por WhatsApp cada 2 segundos.
 
 ## Promociones en vivo

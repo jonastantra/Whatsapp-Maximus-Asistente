@@ -4,6 +4,7 @@ import {
   deleteConversation,
   enqueueOutbox,
   getAllMessagesForExport,
+  getConversationById,
   getMessages,
   getOrCreateConversation,
   getPendingOutbox,
@@ -11,9 +12,12 @@ import {
   listExportableConversations,
   markOutboxFailed,
   markOutboxSending,
+  reactivateAiAfterInactivity,
   retryOutboxForMessage,
   setConversationExportCategory,
+  setMode,
 } from "./db";
+import { AI_AUTO_REACTIVATION_SECONDS } from "./conversation-policy";
 
 test("persists delivery state and allows an explicit retry", () => {
   const conversation = getOrCreateConversation(
@@ -73,6 +77,42 @@ test("persists delivery state and allows an explicit retry", () => {
       getAllMessagesForExport().some((item) => item.id === messageId),
       false,
     );
+  } finally {
+    deleteConversation(conversation.id);
+  }
+});
+
+test("reactivates a HUMAN chat when the customer returns after 15 days", () => {
+  const conversation = getOrCreateConversation(
+    `reactivation-${Date.now()}@lid`,
+    "Prueba reactivacion",
+  );
+
+  try {
+    insertMessage(conversation.id, "user", "Mensaje anterior");
+    setMode(conversation.id, "HUMAN");
+    const lastActivity = getConversationById(conversation.id)?.last_message_at;
+    assert.ok(lastActivity);
+
+    assert.equal(
+      reactivateAiAfterInactivity(
+        conversation.id,
+        AI_AUTO_REACTIVATION_SECONDS,
+        lastActivity + AI_AUTO_REACTIVATION_SECONDS - 1,
+      ),
+      false,
+    );
+    assert.equal(getConversationById(conversation.id)?.mode, "HUMAN");
+
+    assert.equal(
+      reactivateAiAfterInactivity(
+        conversation.id,
+        AI_AUTO_REACTIVATION_SECONDS,
+        lastActivity + AI_AUTO_REACTIVATION_SECONDS,
+      ),
+      true,
+    );
+    assert.equal(getConversationById(conversation.id)?.mode, "AI");
   } finally {
     deleteConversation(conversation.id);
   }

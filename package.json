@@ -11,7 +11,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test --test-concurrency=1 src/**/*.test.ts",
     "start:bot": "tsx scripts/start-bot.ts",
     "start:all": "concurrently --kill-others --names BOT,WEB --prefix-colors yellow,cyan \"npm run start:bot\" \"npm run start\""
   },
