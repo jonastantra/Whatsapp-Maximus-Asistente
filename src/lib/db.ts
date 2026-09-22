@@ -656,6 +656,25 @@ export function setMode(
   return getConversationById(conversationId);
 }
 
+export function reactivateAiAfterInactivity(
+  conversationId: number,
+  inactivitySeconds: number,
+  now = Math.floor(Date.now() / 1000),
+): boolean {
+  const cutoff = Math.floor(now) - Math.max(1, Math.floor(inactivitySeconds));
+  const result = db.prepare(
+    `
+    UPDATE conversations
+    SET mode = 'AI'
+    WHERE id = ?
+      AND mode = 'HUMAN'
+      AND COALESCE(last_message_at, created_at) <= ?
+  `,
+  ).run(conversationId, cutoff);
+
+  return result.changes === 1;
+}
+
 export function setConversationContext(
   conversationId: number,
   enabled: boolean,

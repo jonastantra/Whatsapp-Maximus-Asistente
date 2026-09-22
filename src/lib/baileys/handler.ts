@@ -7,9 +7,11 @@ import {
   getRecentHistory,
   hasRecentMessageWithContent,
   insertMessage,
+  reactivateAiAfterInactivity,
   setMode,
 } from "../db";
 import { botLog } from "../bot-log";
+import { AI_AUTO_REACTIVATION_SECONDS } from "../conversation-policy";
 import { generateReply } from "../openrouter";
 import { getHumanHandoff, getOwnerAlertReason, notifyOwner } from "../alerts";
 import { tryHandleOwnerCommand } from "../owner-commands";
@@ -111,6 +113,17 @@ export async function handleIncomingMessage(
     insertMessage(conversation.id, "human", text);
     botLog(`[bot] Mensaje propio guardado como HUMANO para ${phone}: "${text}"`);
     return;
+  }
+
+  if (
+    reactivateAiAfterInactivity(
+      conversation.id,
+      AI_AUTO_REACTIVATION_SECONDS,
+    )
+  ) {
+    botLog(
+      `[bot] Chat ${phone} reactivado automaticamente en IA tras 15 dias sin actividad.`,
+    );
   }
 
   insertMessage(conversation.id, "user", text);

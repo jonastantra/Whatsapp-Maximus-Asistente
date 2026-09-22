@@ -21,7 +21,7 @@ export function ModeToggle({ mode, disabled, onChange }: ModeToggleProps) {
             : "text-stone-600 hover:bg-stone-100"
         }`}
       >
-        IA
+        {mode === "AI" ? "IA activa" : "Reactivar IA"}
       </button>
       <button
         type="button"
@@ -33,7 +33,7 @@ export function ModeToggle({ mode, disabled, onChange }: ModeToggleProps) {
             : "text-stone-600 hover:bg-stone-100"
         }`}
       >
-        Humano
+        {mode === "HUMAN" ? "Humano activo" : "Tomar chat"}
       </button>
     </div>
   );
