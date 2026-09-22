@@ -257,15 +257,23 @@ function clearAuthSession(): void {
 async function cleanupSocket(): Promise<void> {
   if (!handle) return;
 
+  const { sock } = handle;
+
+  // Soltamos el handle ANTES de cerrar el socket. El listener de
+  // connection.update del socket viejo compara contra `handle` para saber si
+  // sigue siendo el actual: si no lo limpiamos primero, ese cierre
+  // intencional se interpreta como caida y agenda otra reconexion, dejando
+  // dos sockets vivos sobre la misma sesion (WhatsApp responde 440).
+  handle = null;
+
   try {
-    handle.sock.end(undefined);
+    sock.end(undefined);
   } catch {
     // Cierre defensivo: Baileys puede estar ya cerrado.
   }
 
   clearOutboxTimer();
   clearCampaignTimer();
-  handle = null;
   await sleep(100);
 }
 
@@ -382,6 +390,12 @@ export async function startBaileys(): Promise<BaileysHandle> {
   });
 
   sock.ev.on("connection.update", (update) => {
+    // Un socket reemplazado sigue emitiendo eventos mientras se cierra. Si los
+    // atendemos, su cierre agenda una reconexion que mata al socket bueno y
+    // arranca otro: de ahi el ciclo "Conectado / Conexion cerrada code=NaN" y
+    // los 440 por conflicto de sesion.
+    if (handle?.sock !== sock) return;
+
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
