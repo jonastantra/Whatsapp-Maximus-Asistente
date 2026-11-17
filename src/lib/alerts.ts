@@ -16,6 +16,7 @@ export type OwnerAlertReason =
   | "pedido"
   | "salud"
   | "postventa"
+  | "imagen"
   | "mayoreo";
 
 export interface HumanHandoff {
@@ -290,7 +291,9 @@ export async function notifyOwner(
   if (!ownerPhone) return;
 
   const reasonText =
-    reason === "pago"
+    reason === "imagen"
+      ? "imagen recibida para revisión humana"
+      : reason === "pago"
       ? "posible pago, deposito, transferencia o comprobante"
       : reason === "visita"
         ? "cliente posiblemente va a pasar o recoger en sucursal/punto de entrega"

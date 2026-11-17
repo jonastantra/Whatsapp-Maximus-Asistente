@@ -17,6 +17,7 @@ import {
   getOutgoingMessageContentByWaId,
   getOrCreateConversation,
   getPendingOutbox,
+  guiaYaInformadaPorOtroMensaje,
   insertMessage,
   markCampaignRecipientFailed,
   markCampaignRecipientSent,
@@ -28,6 +29,7 @@ import {
 import { botLog } from "../bot-log";
 import { handleIncomingMessage } from "./handler";
 import { phoneNumbersMatch } from "../whatsapp-identity";
+import { contenidoOutbox } from "../contenido-outbox";
 
 export interface BaileysHandle {
   sock: WASocket;
@@ -140,12 +142,16 @@ async function processOutbox(sock: WASocket): Promise<void> {
     const pending = getPendingOutbox(20);
 
     for (const item of pending) {
+      if (guiaYaInformadaPorOtroMensaje(item.id)) {
+        markOutboxSent(item.id);
+        botLog("[bot] Aviso de guía omitido: ya se informó en otro mensaje.");
+        continue;
+      }
       if (!markOutboxSending(item.id)) continue;
 
       try {
-        const sent = await withDeliveryTimeout(
-          sock.sendMessage(jidFromPhone(item.phone), { text: item.content }),
-        );
+        const content = contenidoOutbox(item);
+        const sent = await withDeliveryTimeout(sock.sendMessage(jidFromPhone(item.phone), content));
         markOutboxSent(item.id, sent?.key?.id);
         botLog(`[bot] → Mensaje confirmado para ${item.phone}`, {
           outboxId: item.id,
@@ -365,6 +371,13 @@ export async function startBaileys(): Promise<BaileysHandle> {
 
     for (const msg of messages) {
       const messageId = msg.key.id;
+      const vacio = !msg.message || Object.keys(msg.message).length === 0;
+      if (vacio && !msg.key.remoteJid?.endsWith("@g.us") && msg.key.remoteJid !== "status@broadcast") {
+        // WhatsApp a veces entrega primero un aviso vacío (mensaje aún cifrado) y segundos después el texto real
+        // con el mismo id. Si lo marcáramos como visto aquí, el texto real se tiraría y el cliente se quedaría sin respuesta.
+        botLog("[bot] Mensaje aún sin descifrar; se espera la entrega real.", { id: messageId, remoteJid: msg.key.remoteJid });
+        continue;
+      }
       if (messageId) {
         if (seenMessageIds.has(messageId)) continue;
         seenMessageIds.add(messageId);
