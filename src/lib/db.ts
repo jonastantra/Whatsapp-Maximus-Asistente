@@ -28,10 +28,12 @@ export interface Conversation {
   export_category: ExportCategory;
   last_message_at: number | null;
   created_at: number;
+  codigo?: string | null;
 }
 
 export interface ConversationListItem extends Conversation {
   last_message_preview: string | null;
+  last_message_role: MessageRole | null;
 }
 
 export interface Message {
@@ -42,6 +44,7 @@ export interface Message {
   created_at: number;
   delivery_status?: DeliveryStatus | null;
   delivery_error?: string | null;
+  has_image?: number;
 }
 
 export interface ExportMessage extends Message {
@@ -63,6 +66,7 @@ export interface OutboxItem {
   conversation_id: number;
   phone: string;
   content: string;
+  shipment_pdf_path?: string | null;
   message_id: number | null;
   status: DeliveryStatus;
   attempts: number;
@@ -176,6 +180,33 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_conv
   ON messages(conversation_id, created_at);
 
+CREATE TABLE IF NOT EXISTS inbound_text_events (
+  event_id TEXT PRIMARY KEY,
+  message_id INTEGER,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE TABLE IF NOT EXISTS inbound_image_events (
+  event_id TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE TABLE IF NOT EXISTS message_images (
+  message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+  mime TEXT NOT NULL,
+  data BLOB NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS shipment_notifications (
+ tracking TEXT PRIMARY KEY, conversation_id INTEGER NOT NULL, message_id INTEGER NOT NULL UNIQUE,
+ outbox_id INTEGER NOT NULL UNIQUE, created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE TABLE IF NOT EXISTS customer_shipments (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id INTEGER NOT NULL, address TEXT NOT NULL,
+ tracking TEXT NOT NULL UNIQUE, carrier TEXT NOT NULL, service TEXT NOT NULL, cost REAL,
+ pdf_path TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
 CREATE TABLE IF NOT EXISTS connection_state (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   status TEXT CHECK(status IN ('disconnected','qr','connecting','connected'))
@@ -269,11 +300,25 @@ CREATE INDEX IF NOT EXISTS idx_campaign_recipients_due
   ON campaign_recipients(status, next_send_at);
 `);
 
+const imageEventColumns = db.prepare("PRAGMA table_info(inbound_image_events)").all() as {name:string}[];
+if (!imageEventColumns.some(column => column.name === "message_id")) {
+  db.exec("ALTER TABLE inbound_image_events ADD COLUMN message_id INTEGER REFERENCES messages(id) ON DELETE SET NULL");
+}
+
 function ensureColumn(table: string, column: string, ddl: string): void {
   const columns = db.pragma(`table_info(${table})`) as Array<{ name: string }>;
   if (!columns.some((item) => item.name === column)) {
     db.exec(ddl);
   }
+}
+
+// Give existing human-managed chats a full grace period after deployment.
+const conversationColumns = db.pragma("table_info(conversations)") as Array<{ name: string }>;
+if (!conversationColumns.some((item) => item.name === "mode_changed_at")) {
+  db.transaction(() => {
+    db.exec("ALTER TABLE conversations ADD COLUMN mode_changed_at INTEGER NOT NULL DEFAULT 0");
+    db.exec("UPDATE conversations SET mode_changed_at = unixepoch() WHERE mode = 'HUMAN'");
+  })();
 }
 
 ensureColumn(
@@ -317,6 +362,22 @@ ensureColumn(
   "export_category",
   "ALTER TABLE conversations ADD COLUMN export_category TEXT NOT NULL DEFAULT 'unclassified'",
 );
+
+// Código fijo de cada cliente: AAMMDD (día de su primer mensaje) + "." + número de chat. Ej. 261117.3179
+// Sirve para distinguir clientes con el mismo nombre («Maximus», «Juan»…) y lo usan todas las IAs.
+ensureColumn("conversations", "codigo", "ALTER TABLE conversations ADD COLUMN codigo TEXT");
+db.exec(`
+UPDATE conversations SET codigo = substr(strftime('%Y%m%d', COALESCE(
+  (SELECT MIN(m.created_at) FROM messages m WHERE m.conversation_id = conversations.id), conversations.created_at),
+  'unixepoch', 'localtime'), 3) || '.' || id
+WHERE codigo IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_codigo ON conversations(codigo);
+DROP TRIGGER IF EXISTS conversations_codigo_auto;
+CREATE TRIGGER conversations_codigo_auto AFTER INSERT ON conversations WHEN NEW.codigo IS NULL
+BEGIN
+  UPDATE conversations SET codigo = substr(strftime('%Y%m%d', NEW.created_at, 'unixepoch', 'localtime'), 3) || '.' || NEW.id WHERE id = NEW.id;
+END;
+`);
 
 ensureColumn(
   "campaign_recipients",
@@ -380,45 +441,6 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_outbox_delivery
     ON outbox(status, next_attempt_at, created_at);
 `);
-
-const kirklandRematePromotion = `
-Promocion especial de remate de stock Kirkland liquido 5%.
-Poco stock disponible, ultimas piezas. Caducidad: septiembre 2026.
-Vigencia: solo hasta el 16 de mayo.
-Precios:
-- 1 mes: $199 MXN.
-- 2 meses: $399 MXN.
-- 3 meses: $499 MXN.
-- 6 meses: $950 MXN.
-- 2 cajas: $1,500 MXN.
-Usala cuando pregunten por Kirkland, minoxidil liquido, promociones o remate.
-Responde con urgencia real: es remate y hay poco stock.
-`.trim();
-
-const currentPromoSeedKey = "kirkland-remate-sept-2026-may-16";
-const settingsForSeed = db
-  .prepare("SELECT promo_seed_key FROM bot_settings WHERE id = 1")
-  .get() as { promo_seed_key: string | null };
-
-if (settingsForSeed.promo_seed_key !== currentPromoSeedKey) {
-  db.transaction(() => {
-    db.prepare(
-      `
-      UPDATE active_promotion
-      SET content = ?, enabled = 1, updated_at = unixepoch()
-      WHERE id = 1
-    `,
-    ).run(kirklandRematePromotion);
-
-    db.prepare(
-      `
-      UPDATE bot_settings
-      SET promo_seed_key = ?, updated_at = unixepoch()
-      WHERE id = 1
-    `,
-    ).run(currentPromoSeedKey);
-  })();
-}
 
 const catalogSeedState = db
   .prepare("SELECT catalog_seed_key FROM bot_settings WHERE id = 1")
@@ -580,6 +602,46 @@ export function insertMessage(
   return insertMessageTx(conversationId, role, content);
 }
 
+// Insertar y encolar como una sola operación para no duplicar respuestas si
+// WhatsApp entrega el mismo evento otra vez o el proceso se reinicia.
+export function registerUncaptionedImage(conversationId: number, jid: string, eventId: string, fromMe: boolean, responseAllowed: boolean): boolean {
+  if (!eventId) return false;
+  return db.transaction(() => {
+    db.prepare("DELETE FROM inbound_image_events WHERE created_at < unixepoch() - 2592000").run();
+    const inserted = db.prepare("INSERT OR IGNORE INTO inbound_image_events(event_id) VALUES (?)").run(eventId);
+    if (!inserted.changes) return false;
+    if (fromMe) {
+      const imageMessageId = insertMessage(conversationId, "human", "[Imagen enviada]");
+      db.prepare("UPDATE inbound_image_events SET message_id = ? WHERE event_id = ?").run(imageMessageId, eventId);
+      setMode(conversationId, "HUMAN");
+      return true;
+    }
+    const imageMessageId = insertMessage(conversationId, "user", "[Imagen recibida sin texto]");
+    db.prepare("UPDATE inbound_image_events SET message_id = ? WHERE event_id = ?").run(imageMessageId, eventId);
+    const conversation = getConversationById(conversationId);
+    if (!responseAllowed || !conversation || conversation.mode !== "AI" || getBotSettings().ai_paused === 1) return true;
+    const response = "Gracias, recibimos tu imagen. Un asesor la revisará y te ayudará por aquí.";
+    const messageId = insertMessage(conversationId, "assistant", response);
+    enqueueOutbox(conversationId, jid, response, messageId);
+    setMode(conversationId, "HUMAN");
+    return true;
+  })();
+}
+
+export function imageMessageIdForEvent(eventId: string): number | null {
+  const row = db.prepare("SELECT message_id FROM inbound_image_events WHERE event_id = ?").get(eventId) as {message_id: number | null} | undefined;
+  return row?.message_id ?? null;
+}
+
+export function saveMessageImage(messageId: number, mime: string, data: Buffer): void {
+  if (!/^image\/(jpeg|png|webp)$/.test(mime) || data.length === 0 || data.length > 10 * 1024 * 1024) throw new Error("Imagen no admitida");
+  db.prepare("INSERT OR IGNORE INTO message_images(message_id,mime,data) VALUES (?,?,?)").run(messageId, mime, data);
+}
+
+export function getMessageImage(messageId: number): {mime:string;data:Buffer} | null {
+  return (db.prepare("SELECT mime,data FROM message_images WHERE message_id = ?").get(messageId) as {mime:string;data:Buffer} | undefined) ?? null;
+}
+
 export function hasRecentMessageWithContent(
   conversationId: number,
   roles: MessageRole[],
@@ -615,6 +677,7 @@ export function getMessages(conversationId: number, limit = 50): Message[] {
       `
       SELECT
         m.*,
+        EXISTS(SELECT 1 FROM message_images im WHERE im.message_id = m.id) AS has_image,
         o.status AS delivery_status,
         o.last_error AS delivery_error
       FROM messages m
@@ -649,11 +712,24 @@ export function setMode(
   conversationId: number,
   mode: ConversationMode,
 ): Conversation | null {
-  db.prepare("UPDATE conversations SET mode = ? WHERE id = ?").run(
+  db.prepare("UPDATE conversations SET mode = ?, mode_changed_at = unixepoch() WHERE id = ?").run(
     mode,
     conversationId,
   );
   return getConversationById(conversationId);
+}
+
+export function reactivateInactiveHumanChats(now = Math.floor(Date.now() / 1000)): number {
+  return db.prepare(`UPDATE conversations SET mode = 'AI', mode_changed_at = ?
+    WHERE mode = 'HUMAN' AND MAX(COALESCE(last_message_at, 0), COALESCE(mode_changed_at, 0)) <= ? - 10800`).run(now, now).changes;
+}
+
+export function reactivateAllChats(): number {
+  return db.transaction(() => {
+    const count = db.prepare("UPDATE conversations SET mode = 'AI', mode_changed_at = unixepoch() WHERE mode = 'HUMAN'").run().changes;
+    db.prepare("UPDATE bot_settings SET ai_paused = 0, updated_at = unixepoch() WHERE id = 1").run();
+    return count;
+  })();
 }
 
 export function setConversationContext(
@@ -694,7 +770,11 @@ export function listConversations(): ConversationListItem[] {
           WHERE m.conversation_id = c.id
           ORDER BY m.created_at DESC, m.id DESC
           LIMIT 1
-        ) AS last_message_preview
+        ) AS last_message_preview,
+        (
+          SELECT m.role FROM messages m WHERE m.conversation_id = c.id
+          ORDER BY m.created_at DESC, m.id DESC LIMIT 1
+        ) AS last_message_role
       FROM conversations c
       ORDER BY COALESCE(c.last_message_at, c.created_at) DESC, c.id DESC
     `,
@@ -840,12 +920,26 @@ export function enqueueOutbox(
   return Number(result.lastInsertRowid);
 }
 
+// Tanto la respuesta normal como la de respaldo comparten esta comprobación:
+// si llegó otro mensaje o intervino una persona, la respuesta vieja se descarta.
+export function enqueueAiReplyIfCurrent(conversationId: number, inboundMessageId: number, phone: string, content: string): boolean {
+  return db.transaction(() => {
+    const latest=db.prepare('SELECT id,role FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT 1').get(conversationId) as {id:number;role:string}|undefined;
+    if (!latest || latest.id!==inboundMessageId || latest.role!=='user') return false;
+    const c=getConversationById(conversationId);
+    if (!c || c.mode!=='AI' || getBotSettings().ai_paused===1) return false;
+    const id=insertMessage(conversationId,'assistant',content);
+    enqueueOutbox(conversationId,phone,content,id);
+    return true;
+  })();
+}
+
 export function getPendingOutbox(limit = 20): OutboxItem[] {
   db.prepare(
     `
     UPDATE outbox
-    SET status = 'pending',
-        last_error = COALESCE(last_error, 'Envío interrumpido por reinicio')
+    SET status = 'failed',
+        last_error = COALESCE(last_error, 'Envío interrumpido: entrega incierta; no reintentar sin verificar')
     WHERE status = 'sending'
       AND next_attempt_at <= unixepoch() - 120
   `,
@@ -854,11 +948,11 @@ export function getPendingOutbox(limit = 20): OutboxItem[] {
   return db
     .prepare(
       `
-      SELECT *
-      FROM outbox
-      WHERE status = 'pending'
-        AND next_attempt_at <= unixepoch()
-      ORDER BY created_at ASC, id ASC
+      SELECT o.*, (SELECT s.pdf_path FROM shipment_notifications n JOIN customer_shipments s ON s.tracking=n.tracking WHERE n.outbox_id=o.id) AS shipment_pdf_path
+      FROM outbox o
+      WHERE o.status = 'pending'
+        AND o.next_attempt_at <= unixepoch()
+      ORDER BY o.created_at ASC, o.id ASC
       LIMIT ?
     `,
     )
@@ -890,6 +984,14 @@ export function markOutboxSent(id: number, waMessageId?: string | null): void {
     WHERE id = ?
   `,
   ).run(waMessageId ?? null, id);
+}
+
+export function guiaYaInformadaPorOtroMensaje(outboxId: number): boolean {
+  return !!db.prepare(`SELECT 1 FROM shipment_notifications n
+    JOIN messages m ON m.conversation_id=n.conversation_id AND m.id<>n.message_id
+      AND m.role IN ('human','assistant') AND instr(m.content,n.tracking)>0
+    LEFT JOIN outbox o ON o.message_id=m.id
+    WHERE n.outbox_id=? AND (o.id IS NULL OR o.status='sent') LIMIT 1`).get(outboxId);
 }
 
 export function markOutboxFailed(
@@ -1011,7 +1113,6 @@ function tokenScore(query: string, item: CatalogItem): number {
     if (haystack.includes(token)) score += 2;
   }
 
-  if (item.active === 1) score += 1;
   return score;
 }
 
@@ -1053,6 +1154,7 @@ export function replaceCatalogItems(
   }>,
 ): CatalogItem[] {
   db.transaction(() => {
+    const existingAliases = new Map(listCatalogItems().map(item => [item.name, item.aliases]));
     db.prepare("DELETE FROM catalog_items").run();
     const insert = db.prepare(`
       INSERT INTO catalog_items
@@ -1063,7 +1165,7 @@ export function replaceCatalogItems(
     items.forEach((item, index) => {
       insert.run(
         item.name.trim(),
-        item.aliases?.trim() || null,
+        item.aliases?.trim() || existingAliases.get(item.name.trim()) || null,
         item.price.trim(),
         item.notes?.trim() || null,
         item.active === false ? 0 : 1,
@@ -1079,7 +1181,7 @@ export function searchRelevantCatalog(
   text: string,
   limit = 8,
 ): CatalogItem[] {
-  const items = listCatalogItems();
+  const items = listCatalogItems().filter((item) => item.active === 1);
   const scored = items
     .map((item) => ({ item, score: tokenScore(text, item) }))
     .filter(({ score }) => score > 0)
@@ -1087,10 +1189,6 @@ export function searchRelevantCatalog(
 
   if (scored.length > 0) {
     return scored.slice(0, limit).map(({ item }) => item);
-  }
-
-  if (wantsPrice(text)) {
-    return items.filter((item) => item.active === 1).slice(0, Math.min(limit, 5));
   }
 
   return [];
@@ -1322,4 +1420,73 @@ export function finalizeCompletedCampaigns(): void {
       )
   `,
   ).run();
+}
+
+// Alerta duradera, sin responder al cliente ni cambiar el modo del chat.
+export function alertarChatsSinRespuesta(ownerAddress: string, now = Math.floor(Date.now() / 1000)): number {
+  if (!ownerAddress) return 0;
+  const ownerJid = ownerAddress.includes('@') ? ownerAddress : `${ownerAddress.replace(/\D/g, '')}@s.whatsapp.net`;
+  if (ownerJid.startsWith('@')) return 0;
+  db.exec(`CREATE TABLE IF NOT EXISTS unanswered_alerts (conversation_id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL, alerted_at INTEGER NOT NULL)`);
+  const rows = db.prepare(`SELECT c.id,c.phone,c.alternate_jid,c.name,m.id AS message_id,m.content
+    FROM conversations c JOIN messages m ON m.id=(SELECT id FROM messages WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1)
+    LEFT JOIN unanswered_alerts a ON a.conversation_id=c.id
+    WHERE m.role='user' AND m.created_at <= ? - 600 AND m.created_at >= ? - 172800
+      AND (a.message_id IS NULL OR (a.message_id != m.id AND a.alerted_at <= ? - 3600))
+    ORDER BY m.created_at LIMIT 30`).all(now,now,now) as Array<{id:number;phone:string;alternate_jid:string|null;name:string|null;message_id:number;content:string}>;
+  const digits = (s:string) => s.split('@')[0].replace(/\D/g,'').slice(-10);
+  let count=0;
+  for (const row of rows) {
+    if (digits(row.phone) === digits(ownerJid) || (row.alternate_jid && digits(row.alternate_jid) === digits(ownerJid))) continue;
+    if (/^(gracias|muchas gracias|ok|vale|sale|perfecto|👍|🙏)[\s.!¡]*$/iu.test(row.content.trim())) continue;
+    const queued = db.transaction(() => {
+      const latest = db.prepare('SELECT id,role FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT 1').get(row.id) as {id:number;role:string}|undefined;
+      if (!latest || latest.id !== row.message_id || latest.role !== 'user') return false;
+      const owner = getOrCreateConversation(ownerJid, 'Propietario');
+      if (owner.id === row.id) return false;
+      const text = `Seguimiento pendiente en WhatsApp Maximus.\nCliente: ${row.name || 'Sin nombre'}\nID conversación: ${row.id}\nMensaje: ${row.content.slice(0,500)}\nRevisa el contexto en el panel antes de responder.`;
+      const id = insertMessage(owner.id, 'assistant', text);
+      enqueueOutbox(owner.id, owner.phone, text, id);
+      db.prepare('INSERT INTO unanswered_alerts(conversation_id,message_id,alerted_at) VALUES(?,?,?) ON CONFLICT(conversation_id) DO UPDATE SET message_id=excluded.message_id,alerted_at=excluded.alerted_at').run(row.id,row.message_id,now);
+      return true;
+    })();
+    if (queued) count++;
+  }
+  return count;
+}
+
+
+// Guarda un texto entrante una sola vez por id de WhatsApp (30 días). Devuelve null si ya se había guardado.
+export function insertInboundTextOnce(conversationId: number, eventId: string | null | undefined, content: string): number | null {
+  if (!eventId) return insertMessage(conversationId, "user", content);
+  return db.transaction(() => {
+    db.prepare("DELETE FROM inbound_text_events WHERE created_at < unixepoch() - 2592000").run();
+    const inserted = db.prepare("INSERT OR IGNORE INTO inbound_text_events(event_id) VALUES (?)").run(eventId);
+    if (!inserted.changes) return null;
+    const id = insertMessage(conversationId, "user", content);
+    db.prepare("UPDATE inbound_text_events SET message_id=? WHERE event_id=?").run(id, eventId);
+    return id;
+  })();
+}
+
+
+// Buscador del panel: ids de chats cuyo nombre, número o mensajes contienen el texto.
+export function searchConversationIds(query: string, limit = 60): number[] {
+  const q = query.trim().slice(0, 80);
+  if (q.length < 2) return [];
+  const like = "%" + q.replace(/[\\%_]/g, (c) => "\\" + c) + "%";
+  const digits = q.replace(/\D/g, "");
+  const dlike = digits.length >= 4 ? "%" + digits + "%" : null;
+  const rows = db.prepare(`
+    SELECT id FROM (
+      SELECT c.id, COALESCE(c.last_message_at, c.created_at) AS t FROM conversations c
+       WHERE c.name LIKE ? ESCAPE '\\' OR c.phone LIKE ? ESCAPE '\\' OR c.alternate_jid LIKE ? ESCAPE '\\' OR c.codigo LIKE ? ESCAPE '\\'
+          OR (? IS NOT NULL AND (c.phone LIKE ? OR c.alternate_jid LIKE ?))
+      UNION
+      SELECT m.conversation_id AS id, MAX(m.created_at) AS t FROM messages m
+       WHERE m.content LIKE ? ESCAPE '\\' OR (? IS NOT NULL AND m.content LIKE ?)
+       GROUP BY m.conversation_id
+    ) GROUP BY id ORDER BY MAX(t) DESC LIMIT ?
+  `).all(like, like, like, like, dlike, dlike, dlike, like, dlike, dlike, limit) as {id:number}[];
+  return rows.map((r) => r.id);
 }

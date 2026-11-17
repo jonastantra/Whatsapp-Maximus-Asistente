@@ -1,0 +1,32 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import Database from "better-sqlite3";
+
+test("solo guarda direcciones tras confirmar pago y conserva el historial de guías", async () => {
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),"envios-test-"));
+ process.env.ENVIOS_DB_PATH=path.join(dir,"test.sqlite");
+ const db=new Database(process.env.ENVIOS_DB_PATH);
+ db.exec("CREATE TABLE messages (conversation_id INTEGER, role TEXT, content TEXT, created_at INTEGER, id INTEGER PRIMARY KEY)");
+ const mod=await import("./envios-cliente");
+ const address="Av San Ignacio 1091, colonia Jardín de San Ignacio, Zapopan Jalisco 45040";
+ assert.equal(mod.detectarDireccion("Mi código es 45040"),null);
+ db.prepare("INSERT INTO messages VALUES (1,'user',?,unixepoch(),1)").run(address);
+ mod.guardarDireccionDetectada(1,address);
+ assert.equal(mod.obtenerEnvios(1).addresses.length,0);
+ mod.confirmarPago(1);
+ assert.equal(mod.obtenerEnvios(1).addresses[0].status,"detectada");
+ mod.confirmarDireccion(1,address);
+ assert.equal(mod.obtenerEnvios(1).addresses[0].status,"confirmada");
+ mod.registrarGuia({conversationId:1,address,tracking:"384626191873",carrier:"FedEx",service:"Express Saver",cost:132.08});
+ mod.registrarGuia({conversationId:1,address,tracking:"384626191873",carrier:"FedEx",service:"Express Saver",cost:132.08});
+ assert.equal(mod.obtenerEnvios(1).shipments.length,1);
+ assert.equal(mod.obtenerEnvios(1).payment,null);
+ mod.confirmarPago(1);
+ mod.registrarGuia({conversationId:1,address,tracking:"384626191873",carrier:"FedEx",service:"Express Saver",cost:132.08});
+ assert.ok(mod.obtenerEnvios(1).payment,"repetir una guía vieja no debe cerrar una compra nueva");
+ assert.equal(mod.obtenerEnvios(2).addresses.length,0);
+ db.close();
+});
