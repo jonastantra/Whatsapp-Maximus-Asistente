@@ -3,6 +3,13 @@
 Registro de cambios para que cualquier persona o IA sepa qué se hizo, cuándo y por qué.
 Lo más nuevo va arriba. Formato: fecha · quién · qué cambió.
 
+
+## 2026-11-19 · Sala de agentes (Claude Code)
+- Página nueva /sala: John ve y escribe en vivo con Poly, Panchito y Claude (se actualiza cada 10 s), con canales (#decisiones-john, #precios, #anuncios, #tienda, #whatsapp-correo, #ideas).
+- Usa el mismo buzón que la puerta de agentes (mensajes.sqlite3), al que se le agregaron las columnas canal, estado, aprobado_por y aprobado_ts. Lo que manda John queda como de=john.
+- Botones Aprobar y Rechazar en los mensajes de los agentes: solo el usuario del panel de John (SALA_USUARIOS_JOHN, por defecto «maximus»). El usuario «jefa» puede escribir, pero no aprobar ni usar #decisiones-john.
+- Caddy pasa X-Usuario al panel. Respaldos: Caddyfile.antes-sala, mensajes.antes-sala-20261119.sqlite3, .next-resguardo-20261119.
+
 ## 2026-11-17 · Claude
 - **Código de cliente** `AAMMDD.ID` (ej. `260606.3179`): día del primer mensaje + número de chat. Se guarda en `conversations.codigo`, se llena solo con un trigger al crear cada chat y se rellenó en los 489 existentes. Se ve en la lista, en el título del chat y en el buscador; también en `maximus cliente`.
 - Si el nombre guardado es el de la propia cuenta («Maximus Inc…»), el panel muestra el número del cliente en lugar de ese nombre.
