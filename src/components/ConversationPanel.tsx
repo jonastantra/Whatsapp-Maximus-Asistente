@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, UIEvent, useEffect, useMemo, useRef, useState } from "react";
+import { nombreCliente } from "@/lib/nombre-cliente";
 import type { ConversationListItem, ConversationMode, Message } from "@/lib/db";
 import { MessageBubble } from "./MessageBubble";
 import { ModeToggle } from "./ModeToggle";
@@ -41,7 +42,7 @@ export function ConversationPanel({
   const canSend = conversation?.mode === "HUMAN" || aiPaused;
   const title = useMemo(() => {
     if (!conversation) return "Selecciona una conversación";
-    return conversation.name || conversation.phone;
+    return nombreCliente(conversation);
   }, [conversation]);
 
   useEffect(() => {
@@ -232,6 +233,8 @@ export function ConversationPanel({
           messages.map((message) => (
             <MessageBubble
               key={message.id}
+              messageId={message.id}
+              hasImage={message.has_image === 1}
               role={message.role}
               content={message.content}
               createdAt={message.created_at}

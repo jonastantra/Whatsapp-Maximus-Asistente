@@ -13,6 +13,7 @@ interface DashboardHeaderProps {
   phone: string | null;
   aiPaused: boolean;
   onAiPausedChange: (paused: boolean) => Promise<void>;
+  onReactivateAll: () => Promise<void>;
   onDisconnect: () => Promise<void>;
   conversations: ConversationListItem[];
   onCategoryChange: (
@@ -25,6 +26,7 @@ export function DashboardHeader({
   phone,
   aiPaused,
   onAiPausedChange,
+  onReactivateAll,
   onDisconnect,
   conversations,
   onCategoryChange,
@@ -44,6 +46,9 @@ export function DashboardHeader({
           aiPaused={aiPaused}
           onChange={onAiPausedChange}
         />
+        <button type="button" onClick={() => { void onReactivateAll(); }} className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100" title="Reactiva IA en todos los chats; no envía mensajes por sí solo">
+          Activar IA en todos
+        </button>
         <CampaignManager />
         <PromotionEditor />
         <ExportCenter

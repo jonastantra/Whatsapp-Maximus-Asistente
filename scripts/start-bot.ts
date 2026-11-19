@@ -1,7 +1,7 @@
 import "./env-loader";
 import fs from "node:fs";
 import path from "node:path";
-import { getConnectionState, setConnectionState } from "../src/lib/db";
+import { getConnectionState, setConnectionState, reactivateInactiveHumanChats, alertarChatsSinRespuesta } from "../src/lib/db";
 import { startBaileys, type BaileysHandle } from "../src/lib/baileys/client";
 
 const dataDir = path.resolve(process.cwd(), "data");
@@ -13,6 +13,26 @@ fs.mkdirSync(dataDir, { recursive: true });
 
 let handle: BaileysHandle | null = null;
 let restarting = false;
+
+function reactivateInactive(): void {
+  try {
+    const count = reactivateInactiveHumanChats();
+    if (count) console.log(`[bot] ${count} chats volvieron a IA tras 3 horas de inactividad.`);
+  } catch (err) {
+    console.error("[bot] No se pudieron reactivar chats inactivos:", err);
+  }
+}
+reactivateInactive();
+setInterval(reactivateInactive, 60000);
+
+function alertarPendientes(): void {
+  try {
+    const count = alertarChatsSinRespuesta(process.env.OWNER_ALERT_PHONE || "");
+    if (count) console.log(`[bot] ${count} avisos de seguimiento encolados.`);
+  } catch (err) { console.error("[bot] Error al revisar seguimiento:", err); }
+}
+setInterval(alertarPendientes, 60000);
+
 
 function clearAuthSession(): void {
   fs.mkdirSync(authDir, { recursive: true });

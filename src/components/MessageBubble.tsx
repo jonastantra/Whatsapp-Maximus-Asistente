@@ -3,6 +3,8 @@
 import type { DeliveryStatus, MessageRole } from "@/lib/db";
 
 interface MessageBubbleProps {
+  messageId: number;
+  hasImage?: boolean;
   role: MessageRole;
   content: string;
   createdAt: number;
@@ -19,6 +21,8 @@ function formatTime(timestamp: number): string {
 }
 
 export function MessageBubble({
+  messageId,
+  hasImage,
   role,
   content,
   createdAt,
@@ -43,9 +47,16 @@ export function MessageBubble({
           <span>{label}</span>
           <span>{formatTime(createdAt)}</span>
         </div>
-        <p className="whitespace-pre-wrap break-words text-sm leading-5">
-          {content}
-        </p>
+        {hasImage ? (
+          <a href={`/api/imagenes/${messageId}`} target="_blank" rel="noreferrer" aria-label="Abrir imagen en tamaño completo">
+            {/* Imagen privada servida por el panel, sin servicio externo de optimización. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/api/imagenes/${messageId}`} alt="Imagen de la conversación" loading="lazy" className="mb-2 max-h-72 max-w-full rounded-md object-contain" />
+          </a>
+        ) : null}
+        {(!hasImage || !/^\[Imagen (?:recibida sin texto|enviada)\]$/.test(content)) && (
+          <p className="whitespace-pre-wrap break-words text-sm leading-5">{content}</p>
+        )}
         {deliveryStatus && role !== "user" ? (
           <div className="mt-1 text-[11px] opacity-85">
             {deliveryStatus === "pending" || deliveryStatus === "sending"

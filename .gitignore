@@ -17,3 +17,6 @@ tsconfig.tsbuildinfo
 
 .DS_Store
 Thumbs.db
+
+# respaldos locales de compilaciones
+.next-resguardo*/

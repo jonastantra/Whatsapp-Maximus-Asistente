@@ -124,9 +124,10 @@ export const DEFAULT_CATALOG: CatalogSeedItem[] = [
     notes: "Confirmar disponibilidad antes de ofrecer fuerte.",
   },
   {
-    name: "Serum crecimiento pestañas, cejas, cabello, barba y bigote",
+    name: "Serum para cejas",
     price: "$229 MXN",
-    aliases: "serum, pestañas, pestanas, cejas, cabello, barba, bigote",
+    aliases: "serum, sérum, cejas",
+    notes: "John confirmó que es para cejas. No recomendar para cabello, barba, bigote ni pestañas sin confirmación.",
   },
   {
     name: "Jabón cubrir huecos menta",

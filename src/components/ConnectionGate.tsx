@@ -10,6 +10,7 @@ import type {
 } from "@/lib/db";
 import { ConversationList } from "./ConversationList";
 import { ConversationPanel } from "./ConversationPanel";
+import { EnviosCliente } from "./EnviosCliente";
 import { DashboardHeader } from "./DashboardHeader";
 import { ExportCenter } from "./ExportCenter";
 import { QRScreen } from "./QRScreen";
@@ -239,6 +240,14 @@ export function ConnectionGate() {
     setAiPaused(json.settings.ai_paused === 1);
   }
 
+  async function reactivateAll() {
+    const res = await fetch("/api/mode/reactivate-all", { method: "POST" });
+    if (!res.ok) { window.alert("No se pudo activar la IA. Inténtalo de nuevo."); return; }
+    const result = await res.json() as { reactivated: number };
+    await refresh();
+    window.alert(`IA activada. Se cambiaron ${result.reactivated} chats a IA. No se enviaron mensajes.`);
+  }
+
   if (connection.status !== "connected") {
     return (
       <QRScreen
@@ -263,10 +272,12 @@ export function ConnectionGate() {
         phone={connection.phone}
         aiPaused={aiPaused}
         onAiPausedChange={changeAiPaused}
+        onReactivateAll={reactivateAll}
         onDisconnect={restartConnection}
         conversations={conversations}
         onCategoryChange={changeExportCategory}
       />
+      {selectedId ? <details className="shrink-0 border-b border-stone-200 bg-white md:hidden"><summary className="cursor-pointer px-4 py-2 text-sm font-semibold text-stone-800">Envíos del cliente</summary><div className="max-h-80 overflow-y-auto"><EnviosCliente key={`mobile-${selectedId}`} conversationId={selectedId} /></div></details> : null}
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <ConversationList
           conversations={conversations}
@@ -284,6 +295,7 @@ export function ConnectionGate() {
           onContextChange={changeConversationContext}
           onRetryMessage={retryMessage}
         />
+        {selectedId ? <div className="hidden min-h-0 md:flex"><EnviosCliente key={selectedId} conversationId={selectedId} /></div> : null}
       </div>
     </main>
   );
